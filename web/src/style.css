@@ -974,3 +974,100 @@ input[type='checkbox'] {
   width: 15px;
   height: 15px;
 }
+
+/* ---------------------------------------------------------------- 图标按钮 */
+
+button.icon {
+  padding: 4px 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  line-height: 0;
+}
+
+button.icon:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--accent-ink);
+}
+
+/* ---------------------------------------------------------------- 弹窗 */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 20, 22, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(10, 20, 22, 0.28);
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-body {
+  padding: 4px 16px 18px;
+  overflow-y: auto;
+}
+
+.modal-body h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 16px 0 8px;
+}
+
+.modal-body .kv {
+  grid-template-columns: minmax(110px, 160px) 1fr;
+}
+
+.modal-body .kv dt {
+  white-space: nowrap;
+}
+
+.modal-body .kv dd {
+  overflow-wrap: anywhere;
+}
+
+ul.caps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+ul.caps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+ul.caps li.off {
+  color: var(--muted);
+}
+
+/* 模型表：首列（名 + id）吃掉剩余宽度，其余列按内容排 */
+table.data.models td:first-child,
+table.data.models th:first-child {
+  width: 40%;
+}

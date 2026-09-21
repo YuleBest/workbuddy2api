@@ -204,14 +204,32 @@ export interface ModelInfo {
   owned_by: string
   context_length: number
   max_output_tokens?: number
-  /** 可用的推理档位（上游能力透出，缺失 = 该模型无档位）。 */
-  reasoning_supported_efforts?: string[]
-  reasoning_default_effort?: string
+  /** 上游显示名（如 "Auto"、"GLM-5v-Turbo"）。 */
   name?: string
   /** 上游积分倍率原文（形如 "x0.21"；global 域会带 " credits" 后缀），x0.00 = 限时免费。 */
   credits?: string
+  /** 中文描述，上游已把倍率拼成前缀（"[x0.21 credit] …"）。 */
   description?: string
+  /** 上游标签（如 "craft"、"badge:限时免费:#FF0000"）。 */
   tags?: string[]
+  /** 厂商代号（上游内部编码，单字母）。 */
+  vendor?: string
+  /** 上游另一口径的尺寸上限，与 context_length 不一定相同。 */
+  max_allowed_size?: number
+  /** 上游标记的默认模型（auto / fast-model 之类）。 */
+  is_default?: boolean
+  supports_images?: boolean
+  supports_tool_call?: boolean
+  supports_reasoning?: boolean
+  /** 只能以思考模式运行（关不掉）。 */
+  only_reasoning?: boolean
+  /** 可传的推理档位（缺失 = 该模型无档位）。 */
+  reasoning_supported_efforts?: string[]
+  reasoning_default_effort?: string
+  /** 上游默认 effort。 */
+  reasoning_effort?: string
+  /** 思考摘要模式（如 "auto"）。 */
+  reasoning_summary?: string
 }
 
 export interface TaskView {
