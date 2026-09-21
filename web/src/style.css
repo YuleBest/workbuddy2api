@@ -31,9 +31,12 @@
   --accent-ink: #0a5d51;
   --accent-soft: #e2f0ec;
 
-  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC',
-    'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  /* 只用系统字体，不加载任何 web 字体（无 @font-face、无字体文件请求）。
+     sans 栈按各平台优先级排列；mono 栈用于数字与 ID，中文由 CJK 等宽/黑体接管。 */
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Sarasa UI SC', sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono',
+    'Noto Sans Mono', 'Sarasa Mono SC', monospace;
 
   --radius: 3px;
   --pad: 20px;

@@ -5,10 +5,6 @@ import { state, setTheme } from './store'
 import { api, ApiError, tokenStore } from './api'
 import './style.css'
 
-// 字体自托管（打进二进制，不依赖外部 CDN）：拉丁字母与数字用 IBM Plex，
-// 中文由系统 CJK 字体接管（见 style.css 的 --sans 栈）。
-// @font-face 写在 style.css 里，只取 latin 子集，避免把西里尔/希腊字母一起打进包。
-import './fonts.css'
 
 setTheme(state.theme)
 
