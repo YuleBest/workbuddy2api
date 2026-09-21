@@ -3,6 +3,7 @@ import App from './App.vue'
 import { router } from './router'
 import { state, setTheme } from './store'
 import { api, ApiError, tokenStore } from './api'
+import './fonts.css'
 import './style.css'
 
 

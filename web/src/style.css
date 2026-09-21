@@ -31,9 +31,10 @@
   --accent-ink: #0a5d51;
   --accent-soft: #e2f0ec;
 
-  /* 只用系统字体，不加载任何 web 字体（无 @font-face、无字体文件请求）。
-     sans 栈按各平台优先级排列；mono 栈用于数字与 ID，中文由 CJK 等宽/黑体接管。 */
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'PingFang SC',
+  /* Inter 自带拉丁字形（随包分发，见 fonts.css），中文由后面的系统 CJK 字体接管。
+     --mono 只留给真正的代码与标识符（<pre>/<code>、模型 ID、uid、密钥、字段名）；
+     数字一律走 --sans + tabular-nums（tnum），既有 Inter 的字形又能对齐。 */
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Sarasa UI SC', sans-serif;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono',
     'Noto Sans Mono', 'Sarasa Mono SC', monospace;
@@ -92,7 +93,13 @@ a {
 }
 
 /* 数字一律等宽，便于纵向比对 */
-.num,
+/* 数字用 Inter + tnum：字形是正文字体，等宽数字保证列对齐 */
+.num {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 等宽只留给代码与标识符（模型 ID / uid / 密钥 / 字段名） */
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -392,7 +399,8 @@ a {
 }
 
 .fact .v {
-  font-family: var(--mono);
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
   font-size: 19px;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
@@ -462,7 +470,8 @@ a {
 }
 
 .credit .val {
-  font-family: var(--mono);
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
@@ -561,7 +570,6 @@ table.data tbody tr:hover {
 table.data td.n,
 table.data th.n {
   text-align: right;
-  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
