@@ -22,8 +22,8 @@ usePolling(async () => {
 </script>
 
 <template>
-  <div v-if="rows.length" class="panel-body tight">
-    <table class="data">
+  <div v-if="rows.length" class="table-scroll">
+    <table class="data recent">
       <thead>
         <tr>
           <th>时间</th>

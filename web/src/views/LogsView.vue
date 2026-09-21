@@ -104,7 +104,8 @@ const failedCount = computed(() => rows.value.filter((r) => !(r.status > 0 && r.
         {{ rows.length ? '换个关键词，或取消「只看失败」。' : '客户端开始调用 /v1/chat/completions 后，这里会逐条出现。' }}
       </div>
 
-      <table v-else class="data">
+      <div v-else class="table-scroll">
+        <table class="data logs">
         <thead>
           <tr>
             <th class="n">#</th>
@@ -137,8 +138,9 @@ const failedCount = computed(() => rows.value.filter((r) => !(r.status > 0 && r.
             <td class="n">{{ tokens(r.tokens) }}</td>
             <td class="n">{{ r.tok_per_sec ? r.tok_per_sec.toFixed(1) : '—' }}</td>
           </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 </template>

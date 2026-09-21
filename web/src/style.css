@@ -318,7 +318,7 @@ a {
 }
 
 .grid.two {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
 }
 
 /* ---------------------------------------------------------------- 状态灯 */
@@ -902,6 +902,7 @@ code {
     display: none;
   }
 
+
   .strip {
     grid-template-columns: 1fr;
   }
@@ -953,9 +954,11 @@ code {
 
 /* ---------------------------------------------------------------- 设置页键值表 */
 
-/* 配置分组：两列，单列最小 460px——再窄标签列会被中文逐字折断。 */
+/* 配置分组：两列，单列最小 460px——再窄标签列会被中文逐字折断。
+   min(460px, 100%) 让列宽在窄屏（手机）自动收到容器宽度，不会撑出横向滚动
+   （写成 minmax(460px,1fr) 的话，规则顺序稍有不慎就会盖掉媒体查询里的单列回落）。 */
 .grid.settings {
-  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
 }
 
 /* 键值表：标签列不换行（中文会逐字断行），值列吃掉剩余宽度并允许长路径折行。 */
@@ -1115,4 +1118,26 @@ th.n button.sort {
   opacity: 1;
   stroke-width: 1.8;
   color: var(--accent-ink);
+}
+
+/* ---------------------------------------------------------------- 宽表横向滚动 */
+
+/* 窄屏（手机）下，宽表保持可读的最小列宽，超出部分在容器内横向滚动，
+   而不是把整页撑宽——页面级横向滚动会让侧栏/顶栏一起跟着晃，很难用。 */
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+table.data.models {
+  min-width: 760px;
+}
+
+table.data.logs {
+  min-width: 880px;
+}
+
+table.data.recent {
+  min-width: 620px;
 }

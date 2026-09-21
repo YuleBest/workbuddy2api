@@ -214,7 +214,8 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
         <button class="ghost" type="button" @click="query = ''">清空搜索</button>
       </div>
 
-      <table v-else class="data models">
+      <div v-else class="table-scroll">
+        <table class="data models">
         <thead>
           <tr>
             <th>
@@ -293,8 +294,9 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
               </div>
             </td>
           </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel">
