@@ -254,7 +254,12 @@ function stateWord(state: string) {
             <StatusLamp :state="t.tv.enabled ? 'ok' : 'idle'" />
             <div class="who">
               <div class="nick">{{ t.name }}</div>
-              <div class="uid">{{ t.tv.enabled ? `每天 ${t.tv.hours.join(':00 / ')}:00` : '已在配置里关闭' }}</div>
+              <div class="muted small">
+                <template v-if="t.tv.enabled">
+                  每天 <span class="num">{{ t.tv.hours.map((h) => `${h}:00`).join(' / ') }}</span>
+                </template>
+                <template v-else>已在配置里关闭</template>
+              </div>
             </div>
           </div>
           <div class="muted small">{{ t.hint }}</div>

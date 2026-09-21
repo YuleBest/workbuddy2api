@@ -875,7 +875,8 @@ code {
 
 .kv dd {
   margin: 0;
-  font-family: var(--mono);
+  /* 正文体：键值对的值多半是散文/时间/配置字面量（"4 小时后过期"、路径、时长），
+     不是代码。真正的标识符（uid、模型 ID、密钥、字段名）由 .mono 显式指定。 */
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
