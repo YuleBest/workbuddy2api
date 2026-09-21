@@ -1071,3 +1071,48 @@ table.data.models td:first-child,
 table.data.models th:first-child {
   width: 40%;
 }
+
+/* ---------------------------------------------------------------- 搜索框 / 排序表头 */
+
+input.search {
+  flex: 1 1 220px;
+  max-width: 320px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* 表头里的排序按钮：占满整格，点击热区大，箭头跟随状态变色 */
+button.sort {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
+  gap: 4px;
+}
+
+button.sort:hover:not(:disabled) {
+  color: var(--accent-ink);
+  border: none;
+}
+
+th.n button.sort {
+  flex-direction: row-reverse;
+}
+
+.sort-icon {
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.55;
+}
+
+.sort-icon.on {
+  opacity: 1;
+  stroke-width: 1.8;
+  color: var(--accent-ink);
+}
