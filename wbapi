@@ -11,7 +11,8 @@
   wbapi key list [--show]   列出调用 key（--show 显示完整值）
   wbapi key new [备注]      生成新 key（立即生效，无需重启）
   wbapi key revoke <前缀>   吊销 key（立即生效）
-  wbapi models [--realm cn|global]  模型清单（上下文长度 + 积分倍率，按域过滤）
+  wbapi models [--realm cn|global] [--more]
+                            模型清单表格（名/ID/域/倍率/能力/上下文/输出）；--more 打完整字段
   wbapi stats [--reset]     请求统计（上游 /v1/stats；--reset 清零累计）
   wbapi panel               管理后台地址与登录提示
   wbapi config              生效配置（脱敏）
@@ -60,9 +61,10 @@ def dwidth(text):
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
 
 
-def pad(text, width):
-    """按显示宽度左对齐补空格（中文昵称/显示名用它才不会跟英文错位）。"""
-    return text + " " * max(0, width - dwidth(text))
+def pad(text, width, right=False):
+    """按显示宽度补空格（中文昵称/显示名用它才不会跟英文错位）。"""
+    space = " " * max(0, width - dwidth(text))
+    return space + text if right else text + space
 
 
 def sh(*args):
@@ -467,12 +469,43 @@ def credit_rate(m):
     return "x0.00（免费）" if val == 0 else f"x{val:.2f}"
 
 
+def model_name(m):
+    """显示名：优先上游 name（"Deepseek-V4.1-Flash"），缺失回落裸 id。"""
+    nm = (m.get("name") or "").strip()
+    if nm:
+        return nm
+    return m["id"].split(":", 1)[1] if ":" in m["id"] else m["id"]
+
+
+def realm_text(mid):
+    """域：两个汉字（国内 / 国际），无前缀的裸 id 归国内。"""
+    return "国际" if mid.startswith("global:") else "国内"
+
+
+# 推理档位 / 能力 / 其他字段的口径与 Web 面板「更多」弹窗保持一致
+CAPS = [
+    ("supports_images", "识图", "可接收图片输入（多模态）"),
+    ("supports_tool_call", "工具调用", "支持 function calling"),
+    ("supports_reasoning", "思考", "支持推理/思维链"),
+    ("only_reasoning", "仅思考", "只能以思考模式运行，关不掉"),
+]
+# 已在各段展示过的字段，不再重复进「其他字段」
+_SHOWN = {
+    "id", "name", "context_length", "max_output_tokens", "credits",
+    "supports_images", "supports_tool_call", "supports_reasoning", "only_reasoning",
+    "reasoning_supported_efforts", "reasoning_default_effort", "reasoning_effort", "reasoning_summary",
+    "object", "owned_by", "created",  # 协议样板（上游常量）
+}
+
+
 def cmd_models(args):
+    """模型清单。默认打表格（列与 Web 面板一致）；--more 逐模型打完整字段。"""
     realm = None
+    more = "--more" in args
     if "--realm" in args:
         i = args.index("--realm")
         if i + 1 >= len(args):
-            fail("用法: wbapi models --realm cn|global")
+            fail("用法: wbapi models [--realm cn|global] [--more]")
         realm = args[i + 1]
     st, d = req("/v1/models", gw_token(), timeout=30)
     if st != 200:
@@ -480,17 +513,66 @@ def cmd_models(args):
     ms = d.get("data") or []
     if realm:
         ms = [m for m in ms if m["id"].startswith(realm + ":")]
-    print(f"模型（{len(ms)} 个{'，域 ' + realm if realm else ''}）:")
-    for m in ms:
-        ctx = m.get("context_length") or 0
-        rate = credit_rate(m) or "—"
-        eff = m.get("reasoning_supported_efforts")
-        extra = f"  档位 {'/'.join(eff)}" if eff else ""
-        name = (m.get("name") or "").strip()
-        print(f"  {m['id']:<32} {pad(name, 22)} 上下文 {ctx:>9,}  倍率 {pad(rate, 12)}{extra}")
-    print("\n  倍率 = 上游积分扣费倍数（x0.00 为限时免费，越高越费积分）；缺失表示上游未给该字段。")
-    print("  裸模型名（不带 cn:/global: 前缀）也能用，默认走国内版。")
+    if not ms:
+        print("模型列表是空的：网关要至少一个可用账号才能拉到上游模型表（看 wbapi status）")
+        return
+    if more:
+        return print_models_more(ms)
 
+    W_NAME, W_ID, W_REALM, W_RATE, W_CAP, W_CTX, W_OUT = 24, 30, 4, 7, 4, 11, 12
+    head = (
+        f"  {pad('模型', W_NAME)} {pad('ID', W_ID)} {pad('域', W_REALM)} "
+        f"{pad('积分倍率', W_RATE)} {pad('能力', W_CAP)} "
+        f"{pad('上下文长度', W_CTX, True)} {pad('单次最大输出', W_OUT, True)}"
+    )
+    print(f"模型（{len(ms)} 个{'，域 ' + realm if realm else ''}）:")
+    print(head)
+    print("  " + "─" * (dwidth(head) - 2))
+    for m in ms:
+        rate = credit_rate(m) or "—"
+        vision = "识图" if m.get("supports_images") else "文字"
+        ctx = f"{m.get('context_length') or 0:,}"
+        out = f"{m['max_output_tokens']:,}" if m.get("max_output_tokens") else "—"
+        print(
+            f"  {pad(model_name(m), W_NAME)} {pad(m['id'], W_ID)} {pad(realm_text(m['id']), W_REALM)} "
+            f"{pad(rate, W_RATE)} {pad(vision, W_CAP)} {pad(ctx, W_CTX, True)} {pad(out, W_OUT, True)}"
+        )
+    print("\n  --more 看推理档位与全部字段；--realm cn|global 只看某个域。")
+
+
+def print_models_more(ms):
+    """--more：逐模型纵向打印完整字段（对应 Web 面板的「更多」弹窗）。"""
+    print(f"模型完整信息（{len(ms)} 个）:\n")
+    for m in ms:
+        print(f"{m['id']} — {model_name(m)}")
+        rows = [
+            ("域", realm_text(m["id"])),
+            ("积分倍率", credit_rate(m) or "上游未给"),
+            ("上下文长度", f"{m.get('context_length') or 0:,}"),
+            ("单次最大输出", f"{m['max_output_tokens']:,}" if m.get("max_output_tokens") else "—"),
+            ("可传推理档位", " / ".join(m["reasoning_supported_efforts"]) if m.get("reasoning_supported_efforts") else "无档位"),
+            ("默认档位", m.get("reasoning_default_effort") or "—"),
+            ("上游默认 effort", m.get("reasoning_effort") or "—"),
+            ("思考摘要", m.get("reasoning_summary") or "—"),
+        ]
+        for key, label, _ in CAPS:
+            rows.append((label, "是" if m.get(key) else "否"))
+        for k in sorted(m):
+            if k in _SHOWN:
+                continue
+            v = m[k]
+            if v in (None, "", [], False):
+                continue
+            if isinstance(v, list):
+                rows.append((k, ", ".join(map(str, v))))
+            elif isinstance(v, bool):
+                rows.append((k, "是"))
+            else:
+                rows.append((k, str(v)))
+        w = max(dwidth(r[0]) for r in rows)
+        for k, v in rows:
+            print(f"  {pad(k, w)}  {v}")
+        print()
 
 def cmd_stats(args):
     if "--reset" in args:
