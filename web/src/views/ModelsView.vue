@@ -46,13 +46,17 @@ function creditRate(raw?: string): { text: string; tone: string } {
   return { text: `x${val.toFixed(2)}`, tone: '' }
 }
 
-// id 形如 "cn:deepseek-v4-flash" / "global:gpt-5.4"：拆出域做标签，模型名单独展示。
+// id 形如 "cn:deepseek-v4-flash" / "global:gpt-5.4"：拆出域做标签。
+// 展示名一律用上游的 name（"Deepseek-V4.1-Flash" / "GLM-5.3-Flash" 这种正经格式），
+// **不要**用 id 去覆盖它——那样等于把上游给的显示名丢掉，只剩裸 id（踩过）。
+// 只有 name 缺失时才回落裸 id；重名模型（如 cn:hy3 与 cn:hy3-x 都叫 Hy3）靠下面的完整 id 区分。
 const sorted = computed<ModelRow[]>(() =>
   [...models.value]
     .map((m) => {
       const [maybeRealm, ...rest] = m.id.split(':')
       const hasRealm = rest.length > 0
-      return { ...m, realm: hasRealm ? maybeRealm : '', name: hasRealm ? rest.join(':') : m.id }
+      const bare = hasRealm ? rest.join(':') : m.id
+      return { ...m, realm: hasRealm ? maybeRealm : '', name: m.name || bare }
     })
     .sort((a, b) => a.id.localeCompare(b.id)),
 )

@@ -42,6 +42,7 @@ import secrets
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -53,6 +54,16 @@ TUNNEL_SVC = "wbapi-tunnel"
 
 
 # --------------------------------------------------------------------------- 基础
+
+def dwidth(text):
+    """字符串的终端显示宽度：CJK 全角算 2 列，其余 1 列。"""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def pad(text, width):
+    """按显示宽度左对齐补空格（中文昵称/显示名用它才不会跟英文错位）。"""
+    return text + " " * max(0, width - dwidth(text))
+
 
 def sh(*args):
     return subprocess.run(args, capture_output=True, text=True)
@@ -233,7 +244,7 @@ def cmd_accounts():
     for realm, items in sorted(by_realm.items()):
         print(f"  [{realm}]")
         for a in items:
-            print(f"    {state_flag(a)} {a.get('nickname') or '(未命名)':<10} "
+            print(f"    {state_flag(a)} {pad(a.get('nickname') or '(未命名)', 10)} "
                   f"{a.get('credits', 0):>7} 积分   {state_text(a)}")
             for extra in account_extras(a):
                 print(f"        {extra}")
@@ -293,7 +304,7 @@ def cmd_quota(args):
     print(f"池状态: {d['total']} 个账号, 健康 {d['healthy']}, 冷却 {d['cooling']}, "
           f"禁用 {d['disabled']}, 在途占满 {d['in_flight_full']}\n")
     for a in d.get("accounts") or []:
-        head = f"{a.get('nickname') or '(未命名)':<10}"
+        head = pad(a.get('nickname') or '(未命名)', 10)
         print(f"  {state_flag(a)} {head} {state_text(a)}")
         for extra in account_extras(a):
             print(f"      {extra}")
@@ -396,7 +407,7 @@ def cmd_task(args):
             label = {"ok": "✓ 签到成功", "already": "· 今天已签到", "fail": "✗ 失败", "skipped": "· 跳过"}.get(oc.get("status"), oc.get("status"))
             credits = f"{oc['credits']:>7} 积分" if oc.get("credits") is not None else " " * 11
             detail = f"  {oc['detail']}" if oc.get("detail") else ""
-            print(f"    {label:<12} {oc.get('nickname') or oc['uid'][:8]:<10} {credits}{detail}")
+            print(f"    {pad(label, 12)} {pad(oc.get('nickname') or oc['uid'][:8], 10)} {credits}{detail}")
     elif wait and d.get("waited") is False:
         print("    （没等到结果，任务仍在后台跑；稍后 wbapi accounts 看积分变化）")
 
@@ -475,7 +486,8 @@ def cmd_models(args):
         rate = credit_rate(m) or "—"
         eff = m.get("reasoning_supported_efforts")
         extra = f"  档位 {'/'.join(eff)}" if eff else ""
-        print(f"  {m['id']:<32} 上下文 {ctx:>9,}  倍率 {rate:<12}{extra}")
+        name = (m.get("name") or "").strip()
+        print(f"  {m['id']:<32} {pad(name, 22)} 上下文 {ctx:>9,}  倍率 {pad(rate, 12)}{extra}")
     print("\n  倍率 = 上游积分扣费倍数（x0.00 为限时免费，越高越费积分）；缺失表示上游未给该字段。")
     print("  裸模型名（不带 cn:/global: 前缀）也能用，默认走国内版。")
 
