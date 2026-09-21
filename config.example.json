@@ -36,7 +36,8 @@
     "cat_enabled": true
   },
   "admin": {
-    "enabled": false
+    "enabled": false,
+    "token": ""
   },
   "global": {
     "enabled": true,

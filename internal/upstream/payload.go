@@ -42,6 +42,7 @@ func PrepareBodyOptWithEffortsAndDefault(src []byte, sanitize bool, efforts map[
 		return src
 	}
 	obj["stream"] = true
+	normalizeZCodeFormat(obj) // ZCode (AI SDK v5) 形态归一，需先于 sanitize（后者作用于字符串 content）
 	// max_completion_tokens → max_tokens 翻译（吸收 PR #116，Closes #117）：
 	// OpenAI 规范里 max_tokens 已 deprecated、max_completion_tokens 是新字段
 	// （o-series 起引入）；DeepSeek Harness 等新客户端只发别名。WorkBuddy 上游

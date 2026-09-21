@@ -234,6 +234,14 @@ const (
 	chatRateWidth = 11 // 形如 "183.6tok/s"
 )
 
+// tokPerSec 折算 token 生成速率；无 usage（toks<0）或时长为 0 时返回 0。
+func tokPerSec(toks int, total time.Duration) float64 {
+	if toks < 0 || total <= 0 {
+		return 0
+	}
+	return float64(toks) / total.Seconds()
+}
+
 // logChatRow 打印一行请求级表格日志（直接输出 stdout，无 log 时间戳前缀）。
 //
 // 参数：
@@ -242,10 +250,25 @@ const (
 //     uid8 时人眼无法判断是哪个号，要辨认必须再查 auths/，排障多一跳；
 //   - toks<0 表示 usage 缺失，显示 "-"。
 func logChatRow(ttfb, total time.Duration, model, mode, uid, nick string, status int, toks int) {
+	seq := chatSeq.Add(1)
+	// 入环（管理后台的实时请求列表）：与 stdout 表格同一数据源，但不受 chatLogEnabled
+	// 影响——缓冲是产品能力，stdout 是诊断输出。seq 与打印行共用，编号不跳号。
+	appendRequest(RequestRecord{
+		Seq:     seq,
+		Time:    time.Now(),
+		Model:   model,
+		Mode:    mode,
+		UID:     uidPrefix(uid),
+		Nick:    nick,
+		Status:  status,
+		TTFBMS:  ttfb.Milliseconds(),
+		Tokens:  toks,
+		TotalMS: total.Milliseconds(),
+		TokPS:   tokPerSec(toks, total),
+	})
 	if !chatLogEnabled {
 		return
 	}
-	seq := chatSeq.Add(1)
 	model = logfmt.Pad(logfmt.Truncate(model, chatModelWidth), chatModelWidth)
 	// 账号标签只补不截：超宽时宁可让该行变宽，也不丢昵称信息（昵称是排查的主线索）。
 	acct := logfmt.Pad(logfmt.Label(uid, nick), chatAcctWidth)

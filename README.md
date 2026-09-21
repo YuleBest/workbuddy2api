@@ -36,7 +36,8 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 
 ### 社区前端面板
 
-需要 Web 管理面板的用户，可部署以下符合本理念的社区项目（独立维护，与网关解耦）：
+本仓库**自带内置面板**（见 [Web 管理后台](#web-管理后台)，Vue 3 单页应用，编译进二进制，无需额外部署）。
+需要更多第三方形态的话，以下是符合本理念的社区项目（独立维护，与网关解耦）：
 
 - [workbuddy2api-gui](https://github.com/287775856/workbuddy2api-gui) — 账号池状态可视化面板
 - [workbuddy-manager](https://github.com/ithtelab/workbuddy-manager) — 账号管理工具
@@ -105,6 +106,7 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 - 积分日报：`./credit.sh`（美化 / `-json`，realm 感知双域）
 - 手动签到：`./signin.sh`（批量、幂等不重复计）
 - 账号停用 / 恢复：`./acct.sh list | disable <uid> [原因] | enable <uid> | revive <uid>`（需 `admin.enabled`，走网关管理端点）
+- **Web 管理后台**（本仓库内置，Vue 3 + go:embed）：`/admin/` 一个页面看账号池、密钥、请求日志、模型与生效配置，账号的停用 / 恢复 / 复活 / 清冷却、密钥增删、定时任务手动触发都能点（需 `admin.enabled`，见 [Web 管理后台](#web-管理后台)）
 - 领养联动 / 任务查询：`scripts/task_runner.py`（成长任务一体机，默认 dry-run）
 - 个性化提示词：`prompt.file` 指向自定义提示词文件即整体替换内置默认（`custom`/`append` 模式生效）
 
@@ -177,6 +179,17 @@ curl -s http://localhost:7863/healthz
 > ```
 
 ### 源码构建
+
+管理面板是 Vue 3 单页应用，构建产物经 `go:embed` 打进二进制（仓库内已含一份构建产物，
+只改后端时可直接编译）。**改动 `web/` 下的前端代码后**，要先重新构建前端：
+
+```bash
+cd web && pnpm install && pnpm build   # 产物落到 internal/admin/dist，被 go:embed 拾取
+cd .. && go build ./cmd/server
+```
+
+开发前端时用 `pnpm dev` 起 Vite 开发服务器（已配置把 `/api/admin` 代理到 `127.0.0.1:7863`），
+改完再 `pnpm build` 落到二进制里。
 
 ```bash
 go build ./...
@@ -251,6 +264,38 @@ curl -s http://localhost:7863/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
+
+## Web 管理后台
+
+网关内置一个 Vue 3 管理面板，和二进制一起分发，不需要额外部署前端或数据库。
+
+```bash
+# 浏览器打开（把 host 换成你的部署地址；容器部署映射了端口就是宿主机地址）
+http://localhost:7863/admin/
+```
+
+**登录**：填一个调用 key（`keys.json` 里的任意一个），或 `admin.token` 单独配置的管理 token。
+token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.json` 的 `api_key`；
+三者都为空时管理接口不鉴权（与网关"`api_key` 留空 = 不鉴权"同一语义，仅限内网使用）。
+
+| 页面 | 能看到什么 | 能做什么 |
+|---|---|---|
+| 总览 | 是否可接活、账号池分布、请求量与首字延迟、定时任务排程 | 立即执行某类定时任务；签到会同步等待并列出每个账号的结果与签到后余额 |
+| 账号池 | 每号积分余量、冷却倒计时与原因、模型级限额台账、连败降权、在途请求、凭证过期时间、按模型的实测成本、域（国内 / 国际） | 停用 / 恢复（手动位）、复活（系统自动禁用位）、清冷却 |
+| 调用密钥 | 已签发的 key（掩码）、备注、添加日期 | 新建（完整值只显示一次）、吊销 |
+| 请求日志 | 进程内最近 500 条请求：模型、昵称（uid8）、状态码、首字延迟、token、速率 | 按模型 / 账号 / 状态码筛选 |
+| 模型 | 上游动态模型表：域前缀、上下文长度、推理档位 | 手动刷新 |
+| 设置 | 生效配置（密钥类只显示"是否已配置"）、运行信息 | 调整页面刷新间隔与主题 |
+
+**前置条件**：`config.json` 里 `"admin": {"enabled": true}`（默认关闭，与 `cmd/acct` / `acct.sh` 同一开关）。
+面板的动作与上游 `/admin/accounts/{uid}/{disable,enable,revive}` 端点同语义、同状态位——
+`disable/enable` 管手动停用位，`revive` 管系统自动禁用位，两者独立。
+
+**边界**：面板只做观测与少量运维动作，配置本身是只读的——改配置仍要编辑 `config.json` 并重启服务，
+避免在浏览器里改坏关键参数。请求日志来自进程内存环形缓冲，重启即清空；要长期留档看服务日志。
+
+**关掉面板**：`config.json` 里设 `"admin": {"enabled": false}`，`/admin`、`/api/admin/*` 与
+`/admin/accounts/*` 端点都不再注册（`acct.sh` 同样不可用）。
 
 ## 安全与合规
 

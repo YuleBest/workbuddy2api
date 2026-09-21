@@ -9,9 +9,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
+	"workbuddy2api/internal/admin"
 	"workbuddy2api/internal/auth"
 	"workbuddy2api/internal/pool"
 	"workbuddy2api/internal/redisstore"
@@ -196,10 +198,12 @@ func main() {
 		log.Printf("夜猫子任务已启用：%v 点（task_runner.py ALL --yes --only black_cat）", cfg.Schedule.CatHours)
 	}
 
+	keys := server.NewKeyStore(cfg.KeysFile, cfg.APIKey)
 	h := server.NewHandler(server.Config{
 		Pool:         p,
 		Upstream:     up,
 		APIKey:       cfg.APIKey,
+		Keys:         keys,
 		Session:      sessRouter,
 		StickyCount:  sessCount,
 		RedisMode:    redisMode,
@@ -216,9 +220,59 @@ func main() {
 	defer stop()
 	go sch.Run(ctx)
 
+	// 根路由：/admin 前端 + /api/admin 管理 API + 其余交给网关数据面。
+	// 挂在根 mux 而不是塞进 server.Handler：管理后台与数据面互不感知，
+	// 关掉 admin 时数据面代码零改动（config.admin.enabled=false）。
+	var rootHandler http.Handler = h
+	if cfg.Admin.Enabled {
+		adminToken := cfg.Admin.Token
+		if adminToken == "" {
+			// 未单独配置时回落 keys.json 首个 key（无则 config 的 api_key）：
+			// 默认就能用，不必为了打开后台先造一个新密钥。
+			adminToken = keys.First()
+		}
+		adminH := admin.NewHandler(admin.Config{
+			Pool:      p,
+			Scheduler: sch,
+			Keys:      keys,
+			Models:    h.ModelList,
+			Token:     adminToken,
+			ConfigDoc: cfg.Redacted(),
+			Schedule: admin.ScheduleView{
+				Checkin:   admin.TaskView{Enabled: cfg.Schedule.CheckinEnabled, Hours: cfg.Schedule.CheckinHours},
+				Travel:    admin.TaskView{Enabled: cfg.Schedule.TravelEnabled, Hours: cfg.Schedule.TravelHours},
+				Activity:  admin.TaskView{Enabled: cfg.Schedule.ActivityEnabled, Hours: cfg.Schedule.ActivityHours},
+				Keepalive: admin.TaskView{Enabled: cfg.Schedule.KeepaliveEnabled, Hours: cfg.Schedule.KeepaliveHours},
+			},
+			Version:     buildVersion(),
+			Listen:      cfg.Listen,
+			RedisMode:   redisMode,
+			PromptMode:  cfg.Prompt.Mode,
+			StickyCount: sessCount,
+			Degraded:    h.Degraded,
+			Started:     time.Now(),
+		})
+		root := http.NewServeMux()
+		// 上游的运维端点注册在网关 handler 内部（见 server.AdminRoutePatterns）；这里
+		// 先按同一份表把它们转回数据面，再挂 SPA——否则 /admin/ 前缀会把管理端点整个
+		// 吃掉，acct.sh / cmd/acct 直接 404。列表来自 server 包，上游加端点不会漏转。
+		for _, pattern := range server.AdminRoutePatterns() {
+			root.Handle(pattern, h)
+		}
+		root.Handle("/admin", adminH)
+		root.Handle("/admin/", adminH)
+		root.Handle("/api/admin/", adminH)
+		root.Handle("/", h) // 兜底：数据面
+		rootHandler = root
+		log.Printf("管理后台已启用：http://127.0.0.1%s/admin/（token 来源：%s）",
+			cfg.Listen, adminTokenSource(cfg))
+	} else {
+		log.Printf("管理后台已禁用（admin.enabled=false）")
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           h,
+		Handler:           rootHandler,
 		ReadHeaderTimeout: 30 * time.Second,
 		// ReadTimeout 覆盖整个请求读取（含 body）：防慢速 body 拖死连接。
 		// max_body_mb 已移除（请求体无上限，交由上游自然响应），超大 body 成为
@@ -254,4 +308,34 @@ func main() {
 		log.Fatalf("http: %v", err)
 	}
 	log.Printf("bye")
+}
+
+// buildVersion 返回构建版本：优先 vcs 修订号短哈希，取不到则 "dev"。
+// 只用于后台展示，不影响任何行为。
+func buildVersion() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" && s.Value != "" {
+			if len(s.Value) > 7 {
+				return s.Value[:7]
+			}
+			return s.Value
+		}
+	}
+	return "dev"
+}
+
+// adminTokenSource 描述管理 token 的来源（仅用于启动日志，不打印 token 本身）。
+func adminTokenSource(cfg *Config) string {
+	switch {
+	case cfg.Admin.Token != "":
+		return "config.admin.token"
+	case cfg.APIKey != "" || cfg.KeysFile != "":
+		return "keys.json 首个 key / config.api_key"
+	default:
+		return "无（未鉴权）"
+	}
 }

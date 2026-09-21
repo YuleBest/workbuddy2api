@@ -17,6 +17,7 @@ import (
 type Config struct {
 	Listen    string `json:"listen"`     // ":7863"
 	APIKey    string `json:"api_key"`    // 空 = 不鉴权
+	KeysFile  string `json:"keys_file"`  // 多 key 文件（默认 keys.json，热重载）
 	AuthDir   string `json:"auth_dir"`   // ./auths
 	StateFile string `json:"state_file"` // ./data/state.json
 
@@ -34,12 +35,16 @@ type Config struct {
 
 	Schedule config.Schedule `json:"schedule"`
 
-	// Admin 运维管理端点开关（issue #138/#118）。默认**关闭**：管理能力默认不暴露，
-	// 避免「开了网关就等于开了账号管理面」。开启后
-	// /admin/accounts/{uid}/{disable,enable,revive} 可用；鉴权与 /status 同源
-	// （withAuth + 同一个 api_key，不另立管理密钥）。
+	// Admin 运维管理端点 + Web 管理后台开关（issue #138/#118）。默认**关闭**：管理能力
+	// 默认不暴露，避免「开了网关就等于开了账号管理面」。开启后可用：
+	//   - /admin/accounts/{uid}/{disable,enable,revive}（JSON 端点，acct.sh / cmd/acct 走这里）
+	//   - /admin/ 与 /api/admin/*（Web 后台：观测 + 同一批运维动作）
+	// 鉴权与 /status 同源（withAuth + 同一个 api_key，不另立管理密钥）。
 	Admin struct {
 		Enabled bool `json:"enabled"` // 默认 false
+		// Token Web 后台专用 Bearer token（可选）。空 = 回落 keys.json 首个 key → api_key，
+		// 即默认与数据面同一把钥匙；想给后台单独发钥匙时配这里。
+		Token string `json:"token"`
 	} `json:"admin"`
 
 	Global struct {
@@ -117,17 +122,17 @@ type Config struct {
 	} `json:"upstash"`
 
 	Pool struct {
-		MaxInFlight        int     `json:"max_in_flight"`        // 单账号最大在途请求数，0 = 不限
-		MaxInFlightGlobal  int     `json:"max_in_flight_global"` // global 域单账号在途上限（WAF 403 风控分档），0 = 回落 max_in_flight
-		BreakerThreshold   int     `json:"breaker_threshold"`    // 连续失败次数触发熔断，默认 3
-		BreakerCooldown    string  `json:"breaker_cooldown"`     // 基础熔断时长，默认 "30m"
-		BreakerCooldownMax string  `json:"breaker_cooldown_max"` // 指数退避封顶，默认 "6h"
+		MaxInFlight        int    `json:"max_in_flight"`        // 单账号最大在途请求数，0 = 不限
+		MaxInFlightGlobal  int    `json:"max_in_flight_global"` // global 域单账号在途上限（WAF 403 风控分档），0 = 回落 max_in_flight
+		BreakerThreshold   int    `json:"breaker_threshold"`    // 连续失败次数触发熔断，默认 3
+		BreakerCooldown    string `json:"breaker_cooldown"`     // 基础熔断时长，默认 "30m"
+		BreakerCooldownMax string `json:"breaker_cooldown_max"` // 指数退避封顶，默认 "6h"
 		// 连败降权（issue #114「累计错误率高/连续失败 N 次的账号移出候选池一段时间」）：
 		// ErrClient/传输层这类「不罚号」失败连续计数，达阈临时出池。与冷却/熔断
 		// 并存取更长者不叠加。默认 5 次 / 10m。
-		DegradeThreshold   int    `json:"degrade_threshold"`    // 连败次数触发降权，默认 5
-		DegradeCooldown    string `json:"degrade_cooldown"`     // 降权时长（固定，非指数退避），默认 "10m"
-		DegradeCooldownMax string `json:"degrade_cooldown_max"` // 降权时长的上限钳制，默认 "2h"（仅当 cooldown 超该值才钳制）
+		DegradeThreshold   int     `json:"degrade_threshold"`    // 连败次数触发降权，默认 5
+		DegradeCooldown    string  `json:"degrade_cooldown"`     // 降权时长（固定，非指数退避），默认 "10m"
+		DegradeCooldownMax string  `json:"degrade_cooldown_max"` // 降权时长的上限钳制，默认 "2h"（仅当 cooldown 超该值才钳制）
 		IdleWeightPerHour  float64 `json:"idle_weight_per_hour"` // 闲置补偿：每小时未用 +0.5 权重
 		IdleWeightMax      float64 `json:"idle_weight_max"`      // 闲置补偿封顶，默认 5.0
 		// ExpiringSoon 快过期积分窗口（如 "168h"=7天）：签到查余额时，到期时间在此窗口内
@@ -165,6 +170,7 @@ type Config struct {
 func Default() *Config {
 	c := &Config{
 		Listen:    ":7863",
+		KeysFile:  "keys.json",
 		APIKey:    "",
 		AuthDir:   "./auths",
 		StateFile: "./data/state.json",
@@ -305,6 +311,9 @@ func applyEnv(c *Config) {
 			c.Admin.Enabled = b
 		}
 	}
+	if v := os.Getenv("WB2A_ADMIN_TOKEN"); v != "" {
+		c.Admin.Token = v
+	}
 }
 
 func (c *Config) normalize() error {
@@ -436,4 +445,86 @@ func (c *Config) normalizePrompt() error {
 		c.PromptText = text
 	}
 	return nil
+}
+
+// Redacted 返回脱敏后的生效配置快照（管理后台"设置"页展示用）。
+//
+// 只暴露运营需要看的字段：密钥类一律降级为布尔（是否已设置），绝不回传明文——
+// 后台可能被公网隧道反代，页面上一行明文 key 就等于泄漏。
+func (c *Config) Redacted() map[string]any {
+	return map[string]any{
+		"listen":      c.Listen,
+		"auth_dir":    c.AuthDir,
+		"state_file":  c.StateFile,
+		"keys_file":   c.KeysFile,
+		"api_key_set": c.APIKey != "",
+		"cooldown": map[string]any{
+			"soft_rate":     c.Cooldown.SoftRate,
+			"soft_rate_max": c.Cooldown.SoftRateMax,
+		},
+		"schedule": map[string]any{
+			"checkin_hours":         c.Schedule.CheckinHours,
+			"travel_hours":          c.Schedule.TravelHours,
+			"activity_hours":        c.Schedule.ActivityHours,
+			"keepalive_hours":       c.Schedule.KeepaliveHours,
+			"checkin_enabled":       c.Schedule.CheckinEnabled,
+			"travel_enabled":        c.Schedule.TravelEnabled,
+			"activity_enabled":      c.Schedule.ActivityEnabled,
+			"keepalive_enabled":     c.Schedule.KeepaliveEnabled,
+			"activity_report_count": c.Schedule.ActivityReportCount,
+		},
+		"upstream": map[string]any{
+			"timeout_seconds":        c.Upstream.TimeoutSeconds,
+			"header_timeout_seconds": c.Upstream.HeaderTimeoutSeconds,
+			"idle_timeout_seconds":   c.Upstream.IdleTimeoutSeconds,
+			"user_agent":             c.Upstream.UserAgent,
+			"client_version":         c.Upstream.ClientVersion,
+			"cli_version":            c.Upstream.CliVersion,
+			"client_name":            c.Upstream.ClientName,
+			"passthrough_ip":         c.Upstream.PassthroughIP,
+			"device_token_set":       c.Upstream.DeviceToken != "",
+			"device_token_file":      c.Upstream.DeviceTokenFile != "",
+		},
+		"features": map[string]any{
+			"sanitize_blacklist_fingerprints": c.Features.SanitizeBlacklistFingerprints,
+		},
+		"prompt": map[string]any{
+			"mode":          c.Prompt.Mode,
+			"file":          c.Prompt.File,
+			"prompt_chars":  len(c.PromptText),
+			"prompt_loaded": c.PromptText != "",
+		},
+		"upstash": map[string]any{
+			"configured": c.Upstash.URL != "",
+			"token_set":  c.Upstash.Token != "",
+		},
+		"global": map[string]any{
+			"enabled":      c.Global.Enabled,
+			"chat_base":    c.Global.ChatBase,
+			"billing_base": c.Global.BillingBase,
+		},
+		"pool": map[string]any{
+			"max_in_flight":         c.Pool.MaxInFlight,
+			"max_in_flight_global":  c.Pool.MaxInFlightGlobal,
+			"breaker_threshold":     c.Pool.BreakerThreshold,
+			"breaker_cooldown":      c.Pool.BreakerCooldown,
+			"breaker_cooldown_max":  c.Pool.BreakerCooldownMax,
+			"degrade_threshold":     c.Pool.DegradeThreshold,
+			"degrade_cooldown":      c.Pool.DegradeCooldown,
+			"degrade_cooldown_max":  c.Pool.DegradeCooldownMax,
+			"idle_weight_per_hour":  c.Pool.IdleWeightPerHour,
+			"idle_weight_max":       c.Pool.IdleWeightMax,
+			"expiring_soon":         c.Pool.ExpiringSoon,
+			"cost_explore_interval": c.Pool.CostExploreInterval,
+		},
+		"session_sticky": map[string]any{
+			"enabled":     c.SessionSticky.Enabled,
+			"ttl":         c.SessionSticky.TTL,
+			"gc_interval": c.SessionSticky.GCInterval,
+		},
+		"admin": map[string]any{
+			"enabled":           c.Admin.Enabled,
+			"token_from_config": c.Admin.Token != "",
+		},
+	}
 }

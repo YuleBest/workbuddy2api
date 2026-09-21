@@ -24,10 +24,12 @@ import (
 
 // Config handler 依赖。
 type Config struct {
-	Pool      *pool.Pool
-	Upstream  *upstream.Client
-	APIKey    string // 空 = 不鉴权
-	MaxRotate int    // 单请求最多换号次数，默认 3
+	Pool     *pool.Pool
+	Upstream *upstream.Client
+	APIKey   string // 空 = 不鉴权
+	// Keys 多 key 存储（keys.json，热重载）。非 nil 时优先于 APIKey。
+	Keys      *KeyStore
+	MaxRotate int // 单请求最多换号次数，默认 3
 	// Session 会话粘性路由器（可选；nil = 关闭粘性，纯 Pick 轮换）。
 	Session *session.Router
 	// StickyCount 返回当前粘性会话绑定数（供 /status）；nil 时报告 0。
@@ -66,6 +68,29 @@ const notFoundCooldown = 60 * time.Second
 // 60s 级的快速避让已足够让频控窗口滑过，指数升级由 CooldownSoftRate 既有机制接管。
 // 抖动复用 backoff.go jitterDur（单一来源，不重复造轮子）。
 const wafCooldownBase = 60 * time.Second
+
+// adminRoute 运维管理端点：模式 + 处理函数。注册与对外暴露共用同一份表，
+// 宿主（cmd/server）把 /admin/ 前缀交给 Web 后台前端时，必须按 AdminRoutePatterns()
+// 把这些端点先转回数据面，否则会被 SPA 的前缀匹配吃掉（acct.sh / cmd/acct 会 404）。
+type adminRoute struct {
+	pattern string
+	handle  func(*Handler, http.ResponseWriter, *http.Request)
+}
+
+var adminRoutes = []adminRoute{
+	{"POST /admin/accounts/{uid}/disable", (*Handler).adminAccountDisable},
+	{"POST /admin/accounts/{uid}/enable", (*Handler).adminAccountEnable},
+	{"POST /admin/accounts/{uid}/revive", (*Handler).adminAccountRevive},
+}
+
+// AdminRoutePatterns 返回运维管理端点的模式列表（方法 + 路径）。
+func AdminRoutePatterns() []string {
+	out := make([]string, 0, len(adminRoutes))
+	for _, rt := range adminRoutes {
+		out = append(out, rt.pattern)
+	}
+	return out
+}
 
 // ServiceName 网关身份标识。经 /healthz 响应体 service 字段与 X-Service 头同时透出：
 // 宿主（如 workbuddy-switch 托管网关子进程）探测同端口的旧服务/其他服务时，对方即使
@@ -114,9 +139,11 @@ func NewHandler(cfg Config) *Handler {
 	// 区分——路由一旦注册，"带 key 得 401 / GET 得 405 / JSON 信封 404" 三者都会
 	// 暴露管理面存在。
 	if cfg.AdminEnabled {
-		h.mux.HandleFunc("POST /admin/accounts/{uid}/disable", h.withAuth(h.adminAccountDisable))
-		h.mux.HandleFunc("POST /admin/accounts/{uid}/enable", h.withAuth(h.adminAccountEnable))
-		h.mux.HandleFunc("POST /admin/accounts/{uid}/revive", h.withAuth(h.adminAccountRevive))
+		for _, rt := range adminRoutes {
+			h.mux.HandleFunc(rt.pattern, h.withAuth(func(w http.ResponseWriter, r *http.Request) {
+				rt.handle(h, w, r)
+			}))
+		}
 	}
 	h.mux.HandleFunc("GET /healthz", h.healthz)
 	return h
@@ -128,16 +155,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if h.cfg.APIKey != "" {
-			authz := r.Header.Get("Authorization")
-			// 常量时间比较（发现 7）：!= 短路时序随前缀长度变化，公网暴露下
-			// 理论上可逐字节探测 key 前缀；ConstantTimeCompare 消除该信号。
-			provided := strings.TrimPrefix(authz, "Bearer ")
-			if !strings.HasPrefix(authz, "Bearer ") ||
-				subtle.ConstantTimeCompare([]byte(provided), []byte(h.cfg.APIKey)) != 1 {
-				writeOpenAIError(w, http.StatusUnauthorized, "invalid_api_key", "missing or invalid API key")
-				return
+		ks := h.cfg.Keys
+		if ks == nil {
+			// 未启用多 key：保持原有单 key 行为。
+			if h.cfg.APIKey != "" {
+				authz := r.Header.Get("Authorization")
+				// 常量时间比较（发现 7）：!= 短路时序随前缀长度变化，公网暴露下
+				// 理论上可逐字节探测 key 前缀；ConstantTimeCompare 消除该信号。
+				provided := strings.TrimPrefix(authz, "Bearer ")
+				if !strings.HasPrefix(authz, "Bearer ") ||
+					subtle.ConstantTimeCompare([]byte(provided), []byte(h.cfg.APIKey)) != 1 {
+					writeOpenAIError(w, http.StatusUnauthorized, "invalid_api_key", "missing or invalid API key")
+					return
+				}
 			}
+			next(w, r)
+			return
+		}
+		if !ks.AuthRequired() {
+			next(w, r) // keys.json 为空且 config 未设 key：不鉴权
+			return
+		}
+		authz := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authz, "Bearer ") || !ks.Valid(strings.TrimPrefix(authz, "Bearer ")) {
+			writeOpenAIError(w, http.StatusUnauthorized, "invalid_api_key", "missing or invalid API key")
+			return
 		}
 		next(w, r)
 	}
@@ -389,6 +431,12 @@ func (h *Handler) modelList() []map[string]any {
 	}
 	return out
 }
+
+// ModelList 对外暴露模型列表（管理后台"模型"页复用同一份数据与缓存）。
+func (h *Handler) ModelList() []map[string]any { return h.modelList() }
+
+// Degraded 报告是否处于提示词降级期（passthrough/append 模式被内容策略拦截后到次日 00:00）。
+func (h *Handler) Degraded() bool { return h.degrade.Active() }
 
 // fetchGlobalModels 返回 global 模型名单（纯动态探测结果）及被探测账号。
 // 与 fetchDynamicModels（CN 侧）同语义不同归位：缓存/失败回落封在 upstream.FetchGlobalModels

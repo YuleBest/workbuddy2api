@@ -290,6 +290,22 @@ func (p *Pool) CooldownUntilTomorrow4AM(uid string, reason string) {
 	p.Cooldown(uid, CoolHard, nextDay4AM(now).Sub(now), reason)
 }
 
+// ClearCooldown 人工清冷却：清 until/coolKind/reason/softStreak，不动熔断器
+// （fails/retryCount/breakerUntil）与 credits——语义与签到解冻（reviveCoolingLocked）
+// 一致：冷却域可被人工判定解除，熔断域是上游连续故障信号，不该被一次点击抹掉。
+// 不存在的 uid 为空操作。
+func (p *Pool) ClearCooldown(uid string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.byUID[uid]; ok {
+		e.until = time.Time{}
+		e.coolKind = 0
+		e.reason = ""
+		e.softStreak = 0
+		p.dirty.Store(true)
+	}
+}
+
 // nextDay4AM 返回 now 之后最近的一个 04:00（与 now 同一时区）。
 // now 在当天 04:00 之前（凌晨 00:00~04:00）时返回当天 04:00——此时签到尚未执行，
 // 该窗内触发的硬冷却等当天签到即可恢复；返回次日会白冷约一天。

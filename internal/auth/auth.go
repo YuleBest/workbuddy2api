@@ -200,6 +200,14 @@ func (a *Auth) NeedsRefresh(within time.Duration) bool {
 	return time.Now().Add(within).Unix() >= a.ExpiresAt
 }
 
+// ExpiryInfo 加锁读取凭证的过期时刻与设备 token 有无（供观测/管理接口展示）。
+// 必须加锁：RefreshToken 会在另一 goroutine 改写这两个字段。
+func (a *Auth) ExpiryInfo() (expiresAt int64, hasDeviceToken bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.ExpiresAt, a.DeviceToken != ""
+}
+
 // Parse 兼容两种磁盘形态：
 //
 //	嵌套形 {"auth":{...},"account":{...}}  （插件 OAuth 输出）

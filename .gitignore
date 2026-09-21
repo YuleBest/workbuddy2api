@@ -12,6 +12,9 @@ data/
 /credit
 /wb2api
 /signin_bin
+# 本机部署用的主程序名（systemd ExecStart 指向仓库根的 ./server）；漏了它会
+# 让 13MB 的二进制被 git add -A 直接提交进来
+/server
 /login.exe
 /credit.exe
 /wb2api.exe
@@ -33,6 +36,9 @@ wb2api.pid
 *.log
 draft_*_folder/
 
+# 前端依赖（管理面板源码在 web/，构建产物 internal/admin/dist 要进版本库）
+node_modules/
+
 # Backups (contains auth tokens)
 backups/
 
@@ -44,6 +50,7 @@ PLAN.md
 SPEC.md
 docs/
 
-# 设计/计划文档（但 README.md 必须进版本库）
+# 设计/计划文档（但 README.md / DEVELOPMENT.md 必须进版本库）
 *.md
 !README.md
+!DEVELOPMENT.md
