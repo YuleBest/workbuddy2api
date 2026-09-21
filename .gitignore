@@ -1,6 +1,8 @@
 # Auth & secrets
 auths/
 data/
+# 多 key 存储：keys.json 内含明文调用 key，绝不能进版本库（示例结构见 README 的"调用密钥"）
+/keys.json
 *.key
 *.pem
 *.env
@@ -8,13 +10,15 @@ data/
 .env.*
 
 # Binaries (anchored to repo root only — bare "login"/"credit" would also ignore cmd/login/, cmd/credit/)
+# /server /acct /stats 是本机部署用的名字（systemd ExecStart 指向仓库根的 ./server）：
+# 漏了任何一个都会让十几 MB 的二进制被 git add -A 直接提交进来。
 /login
 /credit
 /wb2api
 /signin_bin
-# 本机部署用的主程序名（systemd ExecStart 指向仓库根的 ./server）；漏了它会
-# 让 13MB 的二进制被 git add -A 直接提交进来
 /server
+/acct
+/stats
 /login.exe
 /credit.exe
 /wb2api.exe

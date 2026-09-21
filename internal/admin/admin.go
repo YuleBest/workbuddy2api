@@ -52,12 +52,14 @@ type Config struct {
 	Started time.Time
 }
 
-// ScheduleView 四类定时任务的开关与触发时点（时点即配置里的整点，非运行时推算）。
+// ScheduleView 六类定时任务的开关与触发时点（时点即配置里的整点，非运行时推算）。
 type ScheduleView struct {
 	Checkin   TaskView `json:"checkin"`
 	Travel    TaskView `json:"travel"`
 	Activity  TaskView `json:"activity"`
 	Keepalive TaskView `json:"keepalive"`
+	School    TaskView `json:"school"`
+	Cat       TaskView `json:"cat"`
 }
 
 // TaskView 单个任务的排程配置。
@@ -324,6 +326,7 @@ func (h *Handler) config(w http.ResponseWriter, r *http.Request) {
 
 // runTask 手动触发定时任务。
 //
+// 支持 checkin / activity / travel / keepalive / school / cat 六类任务。
 // 默认异步：立刻回 202，结果写服务日志（旅行/活跃上报按账号限速、逐条上报，
 // 同步等可能到分钟级，公网经隧道会先超时）。
 //
@@ -350,6 +353,10 @@ func (h *Handler) runTask(w http.ResponseWriter, r *http.Request) {
 		run, label = h.cfg.Scheduler.RunTravelNow, "猫猫旅行"
 	case "keepalive":
 		run, label = h.cfg.Scheduler.RunKeepaliveNow, "token 保活"
+	case "school":
+		run, label = h.cfg.Scheduler.RunSchoolNow, "开学季任务"
+	case "cat":
+		run, label = h.cfg.Scheduler.RunCatNow, "夜猫子任务"
 	default:
 		writeErr(w, http.StatusNotFound, "unknown_task", "未知任务："+name)
 		return

@@ -1,0 +1,593 @@
+#!/usr/bin/env python3
+"""wbapi — WorkBuddy2API 网关管理（新版：双域 / 双位停用 / 内置面板）
+
+用法:
+  wbapi status              网关/隧道状态 + 探活（别名 check，默认动作）
+  wbapi accounts            账号池：域 / 积分 / 冷却 / 双位停用 / 限额台账
+  wbapi quota               冷却与限额详情；quota test [模型] 实测模型可用性
+  wbapi acct list           账号运维：list | disable <uid> [原因] | enable <uid> | revive <uid>
+  wbapi task <任务> [--wait]  手动触发定时任务：checkin | activity | travel | keepalive | school | cat
+  wbapi key list [--show]   列出调用 key（--show 显示完整值）
+  wbapi key new [备注]      生成新 key（立即生效，无需重启）
+  wbapi key revoke <前缀>   吊销 key（立即生效）
+  wbapi models [--realm cn|global]  模型清单（按域过滤）
+  wbapi stats [--reset]     请求统计（上游 /v1/stats；--reset 清零累计）
+  wbapi panel               管理后台地址与登录提示
+  wbapi config              生效配置（脱敏）
+  wbapi log [N]             网关最近 N 行日志（默认 30，journalctl）
+  wbapi start|stop|restart  网关 + 隧道
+  wbapi tunnel [start|stop|restart|status]  单独管理 Cloudflare Tunnel
+  wbapi help                显示本帮助
+
+环境:
+  WB2A_HOME          项目根目录（默认取本脚本所在目录）
+  WB2A_CONFIG        配置文件路径（默认 $WB2A_HOME/config.json）
+  WB2A_PUBLIC_HOST   公网域名（仅用于状态显示，默认 aiapi.yule.best）
+  WB2A_GATEWAY       直接指定网关地址，如 http://127.0.0.1:7863（覆盖配置里的 listen）
+
+鉴权（与网关自身同口径）:
+  /v1/* /status /admin/*  → 调用 key（keys.json 首个 key，或 config 的 api_key）
+  /api/admin/*            → 管理 token（config.admin.token，缺省回落上面那把调用 key）
+
+多账号流程:
+  1. ./login.sh            浏览器完成设备授权（--realm=global 加国际版号）
+  2. wbapi accounts        确认池里账号的域与状态
+  之后网关自动按积分/成本/闲置加权轮转，撞配额自动换号。
+"""
+import json
+import os
+import secrets
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+PROJECT = os.environ.get("WB2A_HOME") or os.path.dirname(os.path.realpath(__file__))
+CONFIG_PATH = os.environ.get("WB2A_CONFIG") or os.path.join(PROJECT, "config.json")
+PUBLIC_HOST = os.environ.get("WB2A_PUBLIC_HOST", "aiapi.yule.best")
+GATEWAY_SVC = "wbapi-gateway"
+TUNNEL_SVC = "wbapi-tunnel"
+
+
+# --------------------------------------------------------------------------- 基础
+
+def sh(*args):
+    return subprocess.run(args, capture_output=True, text=True)
+
+
+def systemctl(*args):
+    r = sh("systemctl", *args)
+    return r.stdout.strip() or r.stderr.strip()
+
+
+def load_config():
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        print(f"[!] 配置文件解析失败（{CONFIG_PATH}）: {e}")
+        return {}
+
+
+CFG = load_config()
+
+
+def base_url():
+    """网关基址：WB2A_GATEWAY > config.listen（:7863 → 127.0.0.1:7863）。"""
+    if os.environ.get("WB2A_GATEWAY"):
+        return os.environ["WB2A_GATEWAY"].rstrip("/")
+    listen = str(CFG.get("listen") or ":7863")
+    if ":" in listen:
+        host, _, port = listen.rpartition(":")
+        if host in ("", "0.0.0.0", "::", "[::]"):
+            host = "127.0.0.1"
+    else:
+        host, port = "127.0.0.1", listen
+    return f"http://{host}:{port}"
+
+
+def keys_path():
+    """keys.json 路径：相对路径按配置文件所在目录解析（与网关的运行目录口径一致）。"""
+    kf = CFG.get("keys_file") or "keys.json"
+    if not os.path.isabs(kf):
+        kf = os.path.join(os.path.dirname(os.path.realpath(CONFIG_PATH)), kf)
+    return kf
+
+
+def load_keys():
+    try:
+        with open(keys_path()) as f:
+            return json.load(f)
+    except Exception:
+        return {"keys": []}
+
+
+def save_keys(d):
+    path = keys_path()
+    with open(path, "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+    os.chmod(path, 0o600)
+
+
+def gw_token():
+    """调用 key：keys.json 首个 key → config.api_key（与网关 withAuth 同序）。"""
+    ks = load_keys().get("keys") or []
+    if ks:
+        return ks[0].get("key", "")
+    return CFG.get("api_key") or ""
+
+
+def admin_token():
+    """管理 token：config.admin.token → 调用 key（与 cmd/server 同序）。"""
+    tok = (CFG.get("admin") or {}).get("token") or ""
+    return tok or gw_token()
+
+
+def req(path, token, method="GET", body=None, timeout=15):
+    """发一个请求，返回 (status, data)。网络层失败 status=0。"""
+    data = json.dumps(body).encode() if body is not None else None
+    r = urllib.request.Request(base_url() + path, data=data, method=method)
+    if token:
+        r.add_header("Authorization", "Bearer " + token)
+    if data:
+        r.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(r, timeout=timeout) as resp:
+            raw = resp.read()
+            return resp.status, (json.loads(raw) if raw else {})
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            return e.code, json.loads(raw)
+        except Exception:
+            return e.code, {"error": {"message": raw.decode(errors="replace")[:200]}}
+    except Exception as e:
+        return 0, {"error": {"message": str(e)}}
+
+
+def fail(msg, code=1):
+    print(f"[!] {msg}")
+    sys.exit(code)
+
+
+def err_msg(data, fallback="请求失败"):
+    e = (data or {}).get("error") or {}
+    return e.get("message") or fallback
+
+
+def fmt_secs(sec):
+    sec = int(sec or 0)
+    if sec <= 0:
+        return "0s"
+    h, m, s = sec // 3600, (sec % 3600) // 60, sec % 60
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
+def ts(iso):
+    return (iso or "")[:19].replace("T", " ") or "—"
+
+
+def admin_ok(path, method="GET", body=None):
+    """打 /api/admin/*（path 传子路径即可，如 /tasks/checkin?wait=1）。
+
+    统一在这里补前缀：调用方各写一遍 /api/admin 是漏写的常见来源（漏了就 404，
+    而 404 又会被当成"管理面未开启"，误导排查方向）。
+    """
+    if not path.startswith("/api/admin"):
+        path = "/api/admin" + path
+    st, data = req(path, admin_token(), method, body, timeout=90)
+    if st == 401:
+        fail("管理 token 无效：检查 config.admin.token 或 keys.json 首个 key")
+    if st == 404:
+        fail("管理面未开启：config.json 里设 \"admin\": {\"enabled\": true} 后重启网关")
+    if st == 0:
+        fail(f"连不上网关（{base_url()}）：{err_msg(data)}")
+    return st, data
+
+
+# --------------------------------------------------------------------------- 状态
+
+def cmd_status():
+    g = systemctl("is-active", GATEWAY_SVC)
+    t = systemctl("is-active", TUNNEL_SVC)
+    print(f"网关:   {g}  ({base_url() if g == 'active' else '未运行'})")
+    print(f"隧道:   {t}  ({'https://' + PUBLIC_HOST if t == 'active' else '未运行'})")
+    if g != "active":
+        return
+    st, d = req("/healthz", "")
+    if st == 0:
+        print(f"健康:   查询失败 {err_msg(d)}")
+        return
+    realms = d.get("realm_servable") or {}
+    servable = [k for k, v in realms.items() if v]
+    print(f"健康:   healthy={d.get('healthy')}  账号数={d.get('total')}  可接活域={','.join(servable) or '无'}")
+    st, s = req("/status", gw_token())
+    if st == 200:
+        print(f"池:     健康 {s.get('healthy')} / 冷却 {s.get('cooling')} / 禁用 {s.get('disabled')}"
+              f" / 在途占满 {s.get('in_flight_full')} / 粘性 {s.get('sticky_sessions', 0)}")
+    if st == 401:
+        print("池:     鉴权失败（keys.json 首个 key 不对？）")
+
+
+def cmd_accounts():
+    st, d = req("/status", gw_token())
+    if st != 200:
+        fail(f"读取账号池失败：{err_msg(d)}")
+    accts = d.get("accounts") or []
+    if not accts:
+        print("账号池是空的：先跑 ./login.sh 完成一次设备授权登录")
+        return
+    by_realm = {}
+    for a in accts:
+        by_realm.setdefault(a.get("realm") or "cn", []).append(a)
+    print(f"账号池（{len(accts)} 个，域 {len(by_realm)} 个）:")
+    for realm, items in sorted(by_realm.items()):
+        print(f"  [{realm}]")
+        for a in items:
+            print(f"    {state_flag(a)} {a.get('nickname') or '(未命名)':<10} "
+                  f"{a.get('credits', 0):>7} 积分   {state_text(a)}")
+            for extra in account_extras(a):
+                print(f"        {extra}")
+    print("\n  提示: 手动停用（我摘的）用 `wbapi acct enable` 放回；系统禁用（网关判坏的）用 `wbapi acct revive`。")
+
+
+def state_flag(a):
+    if a.get("manual_disabled"):
+        return "⏸"
+    if a.get("disabled"):
+        return "✗"
+    if a.get("cooling"):
+        return "⏳"
+    return "✓"
+
+
+def state_text(a):
+    bits = []
+    if a.get("manual_disabled"):
+        bits.append(f"手动停用（{a.get('manual_reason') or '无原因'}）")
+    if a.get("disabled"):
+        bits.append(f"系统禁用（{a.get('disabled_reason') or '无原因'}）")
+    if a.get("cooling"):
+        kind = {"soft_rate": "限流冷却", "hard_credit": "积分耗尽"}.get(a.get("cool_kind"), a.get("cool_kind") or "冷却")
+        bits.append(f"{kind}，剩 {fmt_secs(a.get('cool_remaining_sec'))}")
+    if not bits:
+        bits.append(f"正常（成功 {a.get('success_count', 0)} 次，在途 {a.get('in_flight', 0)}）")
+    return "；".join(bits)
+
+
+def account_extras(a):
+    out = []
+    if a.get("rate_limited_models"):
+        models = ", ".join(m.get("model", "?") for m in a["rate_limited_models"])
+        out.append(f"限额模型: {models}")
+    if a.get("degrade_until") and a["degrade_until"][:4] != "0001":
+        out.append(f"连败降权至 {ts(a['degrade_until'])}（连续失败 {a.get('consecutive_fails', 0)} 次）")
+    if a.get("model_costs"):
+        costs = ", ".join(
+            f"{c['model']}={'免费' if c.get('cost_per_1k', 0) <= 0 else format(c['cost_per_1k'], '.4f')}/1k"
+            for c in a["model_costs"][:3]
+        )
+        out.append(f"成本台账: {costs}")
+    if a.get("last_success") and a["last_success"][:4] != "0001":
+        out.append(f"最近成功 {ts(a['last_success'])}")
+    return out
+
+
+# --------------------------------------------------------------------------- 配额
+
+def cmd_quota(args):
+    if args and args[0] == "test":
+        return cmd_quota_test(args[1:])
+    st, d = req("/status", gw_token())
+    if st != 200:
+        fail(f"读取池状态失败：{err_msg(d)}")
+    print(f"池状态: {d['total']} 个账号, 健康 {d['healthy']}, 冷却 {d['cooling']}, "
+          f"禁用 {d['disabled']}, 在途占满 {d['in_flight_full']}\n")
+    for a in d.get("accounts") or []:
+        head = f"{a.get('nickname') or '(未命名)':<10}"
+        print(f"  {state_flag(a)} {head} {state_text(a)}")
+        for extra in account_extras(a):
+            print(f"      {extra}")
+    print("\n提示: 6004（当日模型用量）按账号+模型独立计，冷却只表示该号在该模型上撞过限，换模型通常立即可用。")
+    print("      想实测哪个模型现在能用：wbapi quota test [模型名]")
+
+
+def cmd_quota_test(models):
+    if not models:
+        st, d = req("/v1/models", gw_token(), timeout=20)
+        if st != 200:
+            fail(f"拉模型列表失败：{err_msg(d)}")
+        models = [m["id"] for m in d.get("data", [])]
+    print(f"实测 {len(models)} 个模型（每个发一条 max_tokens=16 的最小请求，消耗少量配额）:\n")
+    ok = []
+    bad = []
+    for m in models:
+        sys.stdout.write(f"  {m:<28} ")
+        sys.stdout.flush()
+        t0 = time.time()
+        st, d = req("/v1/chat/completions", gw_token(), "POST",
+                    {"model": m, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 16},
+                    timeout=90)
+        dt = time.time() - t0
+        if st == 200 and d.get("choices"):
+            print(f"✓ {dt:.1f}s")
+            ok.append(m)
+        else:
+            print(f"✗ [{st}] {err_msg(d)[:70]}")
+            bad.append(m)
+    print(f"\n可用 {len(ok)}/{len(models)}")
+    if bad:
+        print("不可用: " + ", ".join(bad))
+
+
+# --------------------------------------------------------------------------- 账号运维
+
+def resolve_uid(prefix):
+    """把 uid 前缀补全成完整 uid（唯一匹配才放行）。"""
+    if len(prefix) >= 36:
+        return prefix
+    st, d = req("/status", gw_token())
+    if st != 200:
+        fail(f"读取账号列表失败：{err_msg(d)}")
+    hits = [a["uid"] for a in d.get("accounts") or [] if a["uid"].startswith(prefix)]
+    if not hits:
+        fail(f"没有匹配 {prefix!r} 的账号")
+    if len(hits) > 1:
+        fail(f"前缀 {prefix!r} 匹配到 {len(hits)} 个账号，请写长一点")
+    return hits[0]
+
+
+def cmd_acct(args):
+    sub = args[0] if args else "list"
+    if sub == "list":
+        return cmd_accounts()
+    if sub in ("disable", "enable", "revive"):
+        if len(args) < 2:
+            fail(f"用法: wbapi acct {sub} <uid 或前缀> [原因]")
+        uid = resolve_uid(args[1])
+        body = {"reason": args[2]} if sub == "disable" and len(args) > 2 else None
+        st, d = req(f"/admin/accounts/{uid}/{sub}", gw_token(), "POST", body)
+        if st != 200:
+            fail(f"{sub} 失败：{err_msg(d)}")
+        state = "手动停用" if d.get("manual_disabled") else "手动位已清"
+        auto = "系统禁用中（要 revive）" if d.get("disabled") else "系统位正常"
+        changed = "已生效" if d.get("changed") else "无变化（本来就是该状态）"
+        print(f"[✓] {uid[:8]} {sub}: {state}，{auto} — {changed}")
+        return
+    fail(f"未知子命令 {sub!r}；用法: wbapi acct list|disable|enable|revive")
+
+
+# --------------------------------------------------------------------------- 定时任务
+
+TASKS = {
+    "checkin": "签到",
+    "activity": "活跃上报",
+    "travel": "猫猫旅行",
+    "keepalive": "token 保活",
+    "school": "开学季任务",
+    "cat": "夜猫子任务",
+}
+
+
+def cmd_task(args):
+    if not args:
+        fail("用法: wbapi task <" + "|".join(TASKS) + "> [--wait]")
+    name = args[0]
+    if name not in TASKS:
+        fail(f"未知任务 {name!r}；可选: {', '.join(TASKS)}")
+    wait = "--wait" in args or (name == "checkin" and "--async" not in args)
+    path = f"/tasks/{name}" + ("?wait=1" if wait else "")
+    st, d = admin_ok(path, "POST")
+    if st not in (200, 202):
+        fail(f"触发失败：{err_msg(d)}")
+    print(f"[✓] {d.get('message') or TASKS[name] + '已触发'}")
+    outcomes = d.get("outcomes")
+    if outcomes:
+        for oc in outcomes:
+            label = {"ok": "✓ 签到成功", "already": "· 今天已签到", "fail": "✗ 失败", "skipped": "· 跳过"}.get(oc.get("status"), oc.get("status"))
+            credits = f"{oc['credits']:>7} 积分" if oc.get("credits") is not None else " " * 11
+            detail = f"  {oc['detail']}" if oc.get("detail") else ""
+            print(f"    {label:<12} {oc.get('nickname') or oc['uid'][:8]:<10} {credits}{detail}")
+    elif wait and d.get("waited") is False:
+        print("    （没等到结果，任务仍在后台跑；稍后 wbapi accounts 看积分变化）")
+
+
+# --------------------------------------------------------------------------- 密钥
+
+def cmd_key_list(show=False):
+    keys = load_keys().get("keys") or []
+    if not keys:
+        print(f"keys.json 里没有 key（{keys_path()}）——网关当前不鉴权，建议建一个：wbapi key new")
+        return
+    print(f"共 {len(keys)} 个 key:")
+    for e in keys:
+        k = e.get("key", "")
+        disp = k if show else f"{k[:8]}…{k[-4:]}"
+        print(f"  {disp}  {e.get('note', '')}  {e.get('added', '')}")
+    if not show:
+        print("  （加 --show 显示完整值）")
+
+
+def cmd_key_new(note=""):
+    alphabet = "0123456789abcdef"
+    key = "sk-" + "".join(secrets.choice(alphabet) for _ in range(32))
+    d = load_keys()
+    d.setdefault("keys", []).append({"key": key, "note": note or "未命名", "added": time.strftime("%Y-%m-%d")})
+    save_keys(d)
+    print(f"[✓] 已添加（{note or '未命名'}）\n\n{key}\n\n[*] 立即生效（网关热重载），无需重启")
+
+
+def cmd_key_revoke(prefix):
+    d = load_keys()
+    keys = d.get("keys") or []
+    hits = [e for e in keys if e.get("key", "").startswith(prefix)]
+    if len(hits) != 1:
+        fail(f"匹配到 {len(hits)} 个 key，请用更长的前缀")
+    d["keys"] = [e for e in keys if e is not hits[0]]
+    save_keys(d)
+    print(f"[✓] 已吊销 {hits[0]['key'][:8]}…（{hits[0].get('note', '')}），剩余 {len(d['keys'])} 个，立即生效")
+
+
+# --------------------------------------------------------------------------- 模型 / 统计 / 面板 / 配置
+
+def cmd_models(args):
+    realm = None
+    if "--realm" in args:
+        i = args.index("--realm")
+        if i + 1 >= len(args):
+            fail("用法: wbapi models --realm cn|global")
+        realm = args[i + 1]
+    st, d = req("/v1/models", gw_token(), timeout=30)
+    if st != 200:
+        fail(f"拉模型列表失败：{err_msg(d)}")
+    ms = d.get("data") or []
+    if realm:
+        ms = [m for m in ms if m["id"].startswith(realm + ":")]
+    print(f"模型（{len(ms)} 个{'，域 ' + realm if realm else ''}）:")
+    for m in ms:
+        ctx = m.get("context_length") or 0
+        eff = m.get("reasoning_supported_efforts")
+        extra = f"  档位 {'/'.join(eff)}" if eff else ""
+        print(f"  {m['id']:<32} 上下文 {ctx:>9,}{extra}")
+    print("\n  裸模型名（不带 cn:/global: 前缀）也能用，默认走国内版。")
+
+
+def cmd_stats(args):
+    if "--reset" in args:
+        st, d = admin_ok("/stats/reset", "POST")
+        if st != 200:
+            fail(f"清零失败：{err_msg(d)}")
+        print("[✓] 统计已清零（从此刻重新累计）")
+        return
+    st, d = req("/v1/stats", gw_token(), timeout=30)
+    if st != 200:
+        fail(f"读取统计失败：{err_msg(d)}")
+    if not d.get("enabled", True):
+        print(f"统计未启用：{d.get('message') or ''}")
+        return
+    t = d.get("total") or {}
+    print(f"统计窗口: {ts(d.get('since'))} 起，已运行 {fmt_secs(d.get('uptime_sec'))}\n")
+    print(f"  总计   请求 {t.get('requests', 0)}（成功 {t.get('success', 0)} / 失败 {t.get('failed', 0)}）"
+          f"  token {t.get('total_tokens', 0)}")
+    print(f"         平均首字 {t.get('avg_ttfb_ms', 0):.0f}ms  平均耗时 {t.get('avg_latency_ms', 0):.0f}ms"
+          f"  速率 {t.get('tokens_per_sec', 0):.1f}tok/s  缓存命中率 {100 * t.get('cache_hit_rate', 0):.0f}%")
+    for m in (d.get("models") or [])[:12]:
+        print(f"  {m['model']:<28} 请求 {m['requests']:>5}  失败 {m['failed']:>4}  "
+              f"首字 {m.get('avg_ttfb_ms', 0):>6.0f}ms  token {m.get('total_tokens', 0):>8}")
+
+
+def cmd_panel():
+    tok = admin_token()
+    src = "config.admin.token" if (CFG.get("admin") or {}).get("token") else "keys.json 首个 key / config.api_key"
+    enabled = (CFG.get("admin") or {}).get("enabled")
+    print(f"管理后台: {base_url()}/admin/")
+    print(f"公网地址: https://{PUBLIC_HOST}/admin/")
+    print(f"登录 token: {tok[:8]}…（{src}）" if tok else "登录 token: 未配置（网关不鉴权）")
+    if not enabled:
+        print("[!] config.admin.enabled=false：后台与 /admin/accounts/* 端点都没注册，先在 config.json 打开再重启")
+
+
+def cmd_config():
+    st, d = req("/api/admin/config", admin_token())
+    if st == 200:
+        cfg = d.get("config") or {}
+    else:
+        cfg = redact_local(CFG)
+    print(json.dumps(cfg, indent=2, ensure_ascii=False))
+
+
+def redact_local(cfg):
+    """离线兜底：本地 config.json 脱敏后展示（不打印任何密钥明文）。"""
+    out = json.loads(json.dumps(cfg))
+    for k in ("api_key",):
+        if out.get(k):
+            out[k] = "***"
+    if isinstance(out.get("upstash"), dict):
+        for k in ("url", "token"):
+            if out["upstash"].get(k):
+                out["upstash"][k] = "***"
+    if isinstance(out.get("admin"), dict) and out["admin"].get("token"):
+        out["admin"]["token"] = "***"
+    for k in ("device_token",):
+        if isinstance(out.get("upstream"), dict) and out["upstream"].get(k):
+            out["upstream"][k] = "***"
+    return out
+
+
+# --------------------------------------------------------------------------- 服务
+
+def cmd_log(n=30):
+    print(sh("journalctl", "-u", GATEWAY_SVC, "-n", str(n), "--no-pager").stdout)
+
+
+def cmd_svc(action):
+    for svc in (GATEWAY_SVC, TUNNEL_SVC):
+        print(f"{action} {svc}: {systemctl(action, svc) or 'ok'}")
+
+
+def cmd_tunnel(args):
+    sub = args[0] if args else "status"
+    if sub == "status":
+        print("隧道:", systemctl("is-active", TUNNEL_SVC), f"(https://{PUBLIC_HOST})")
+        return
+    print(systemctl(sub, TUNNEL_SVC) or f"[✓] {sub} 完成")
+
+
+# --------------------------------------------------------------------------- 入口
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else "status"
+    rest = a[1:]
+    if cmd in ("status", "check"):
+        cmd_status()
+    elif cmd == "accounts":
+        cmd_accounts()
+    elif cmd in ("quota", "pool"):
+        cmd_quota(rest)
+    elif cmd in ("acct", "account"):
+        cmd_acct(rest)
+    elif cmd == "task":
+        cmd_task(rest)
+    elif cmd in ("models", "list"):
+        cmd_models(rest)
+    elif cmd == "stats":
+        cmd_stats(rest)
+    elif cmd == "panel":
+        cmd_panel()
+    elif cmd == "config":
+        cmd_config()
+    elif cmd == "key":
+        sub = rest[0] if rest else "list"
+        if sub == "list":
+            cmd_key_list("--show" in a)
+        elif sub == "new":
+            cmd_key_new(rest[1] if len(rest) > 1 else "")
+        elif sub in ("revoke", "rm", "delete"):
+            if len(rest) < 2:
+                fail("用法: wbapi key revoke <前缀>")
+            cmd_key_revoke(rest[1])
+        else:
+            print(__doc__)
+    elif cmd == "log":
+        cmd_log(int(rest[0]) if rest else 30)
+    elif cmd in ("start", "stop", "restart"):
+        cmd_svc(cmd)
+    elif cmd == "tunnel":
+        cmd_tunnel(rest)
+    elif cmd in ("help", "-h", "--help"):
+        print(__doc__)
+    else:
+        print(__doc__)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

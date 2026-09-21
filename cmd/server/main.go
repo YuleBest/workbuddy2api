@@ -243,6 +243,8 @@ func main() {
 				Travel:    admin.TaskView{Enabled: cfg.Schedule.TravelEnabled, Hours: cfg.Schedule.TravelHours},
 				Activity:  admin.TaskView{Enabled: cfg.Schedule.ActivityEnabled, Hours: cfg.Schedule.ActivityHours},
 				Keepalive: admin.TaskView{Enabled: cfg.Schedule.KeepaliveEnabled, Hours: cfg.Schedule.KeepaliveHours},
+				School:    admin.TaskView{Enabled: cfg.Schedule.SchoolEnabled, Hours: cfg.Schedule.SchoolHours},
+				Cat:       admin.TaskView{Enabled: cfg.Schedule.CatEnabled, Hours: cfg.Schedule.CatHours},
 			},
 			Version:     buildVersion(),
 			Listen:      cfg.Listen,
