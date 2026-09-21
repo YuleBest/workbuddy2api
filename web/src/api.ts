@@ -208,6 +208,10 @@ export interface ModelInfo {
   reasoning_supported_efforts?: string[]
   reasoning_default_effort?: string
   name?: string
+  /** 上游积分倍率原文（形如 "x0.21"；global 域会带 " credits" 后缀），x0.00 = 限时免费。 */
+  credits?: string
+  description?: string
+  tags?: string[]
 }
 
 export interface TaskView {

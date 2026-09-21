@@ -3,6 +3,7 @@
 
 用法:
   wbapi status              网关/隧道状态 + 探活（别名 check，默认动作）
+  wbapi doctor              自检：unit/二进制、auths 属主与可读性、keys 权限、管理面前置、运行态
   wbapi accounts            账号池：域 / 积分 / 冷却 / 双位停用 / 限额台账
   wbapi quota               冷却与限额详情；quota test [模型] 实测模型可用性
   wbapi acct list           账号运维：list | disable <uid> [原因] | enable <uid> | revive <uid>
@@ -10,7 +11,7 @@
   wbapi key list [--show]   列出调用 key（--show 显示完整值）
   wbapi key new [备注]      生成新 key（立即生效，无需重启）
   wbapi key revoke <前缀>   吊销 key（立即生效）
-  wbapi models [--realm cn|global]  模型清单（按域过滤）
+  wbapi models [--realm cn|global]  模型清单（上下文长度 + 积分倍率，按域过滤）
   wbapi stats [--reset]     请求统计（上游 /v1/stats；--reset 清零累计）
   wbapi panel               管理后台地址与登录提示
   wbapi config              生效配置（脱敏）
@@ -36,6 +37,7 @@
 """
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -437,6 +439,23 @@ def cmd_key_revoke(prefix):
 
 # --------------------------------------------------------------------------- 模型 / 统计 / 面板 / 配置
 
+# 上游 credits 字段两个域形态不一致：CN 是 "x0.21"，global 是 "x0.34 credits"。
+# 统一取 x 后的数字重排，形态不认识时原样展示（不丢信息）。
+_RATE_RE = re.compile(r"x\s*([0-9]+(?:\.[0-9]+)?)", re.I)
+
+
+def credit_rate(m):
+    """上游积分倍率：x0.00 = 限时免费；缺失返回空串。"""
+    raw = (m.get("credits") or "").strip()
+    if not raw:
+        return ""
+    hit = _RATE_RE.search(raw)
+    if not hit:
+        return raw
+    val = float(hit.group(1))
+    return "x0.00（免费）" if val == 0 else f"x{val:.2f}"
+
+
 def cmd_models(args):
     realm = None
     if "--realm" in args:
@@ -453,10 +472,12 @@ def cmd_models(args):
     print(f"模型（{len(ms)} 个{'，域 ' + realm if realm else ''}）:")
     for m in ms:
         ctx = m.get("context_length") or 0
+        rate = credit_rate(m) or "—"
         eff = m.get("reasoning_supported_efforts")
         extra = f"  档位 {'/'.join(eff)}" if eff else ""
-        print(f"  {m['id']:<32} 上下文 {ctx:>9,}{extra}")
-    print("\n  裸模型名（不带 cn:/global: 前缀）也能用，默认走国内版。")
+        print(f"  {m['id']:<32} 上下文 {ctx:>9,}  倍率 {rate:<12}{extra}")
+    print("\n  倍率 = 上游积分扣费倍数（x0.00 为限时免费，越高越费积分）；缺失表示上游未给该字段。")
+    print("  裸模型名（不带 cn:/global: 前缀）也能用，默认走国内版。")
 
 
 def cmd_stats(args):
@@ -540,6 +561,93 @@ def cmd_tunnel(args):
     print(systemctl(sub, TUNNEL_SVC) or f"[✓] {sub} 完成")
 
 
+# --------------------------------------------------------------------------- 自检
+
+def cmd_doctor():
+    """一键体检：把"看起来在跑但其实不工作"的常见原因逐条查出来。
+
+    起因：auths/ 被 chown 给别的 uid 后，网关进程读不到 0600 的凭证文件 → 池子
+    0 个账号、模型列表空、面板空白，但服务状态仍是 active，肉眼很难定位。
+    """
+    import pwd
+
+    problems = []
+    ok = []
+
+    def check(cond, ok_msg, bad_msg):
+        (ok if cond else problems).append(ok_msg if cond else bad_msg)
+
+    # 1) unit 与二进制
+    unit_user = systemctl("show", "-p", "User", "--value", GATEWAY_SVC).strip() or "root"
+    # ExecStart 要从 unit 文件里读：systemctl show --value 给的是 { path=... ; argv[]=... } 结构
+    frag = systemctl("show", "-p", "FragmentPath", "--value", GATEWAY_SVC).strip()
+    unit_exec = ""
+    if frag and os.path.exists(frag):
+        with open(frag) as f:
+            for line in f:
+                if line.startswith("ExecStart="):
+                    unit_exec = line.split("=", 1)[1].strip()
+                    break
+    check(bool(unit_exec), f"unit 已加载（User={unit_user}）", f"{GATEWAY_SVC} 未加载（systemd 里没有这个服务？）")
+    exe = unit_exec.split()[0] if unit_exec else ""
+    check(os.path.exists(exe), f"二进制存在：{exe}", f"unit 指向的二进制不存在：{exe}")
+
+    # 2) auths 属主/可读性 —— 本次事故的根因
+    auth_dir = CFG.get("auth_dir") or "./auths"
+    if not os.path.isabs(auth_dir):
+        auth_dir = os.path.join(os.path.dirname(os.path.realpath(CONFIG_PATH)), auth_dir)
+    auth_dir = os.path.normpath(auth_dir)
+    try:
+        want = pwd.getpwnam(unit_user).pw_uid
+    except KeyError:
+        want = None
+    files = [f for f in sorted(os.listdir(auth_dir)) if f.endswith(".json")] if os.path.isdir(auth_dir) else []
+    check(bool(files), f"凭证文件 {len(files)} 个（{auth_dir}）", f"{auth_dir} 里没有 .json 凭证（先跑 ./login.sh 登录）")
+    if files and want is not None:
+        bad = [f for f in files if os.stat(os.path.join(auth_dir, f)).st_uid != want]
+        check(not bad,
+              f"auths 属主与网关用户（{unit_user}）一致",
+              f"auths 里有 {len(bad)} 个文件属主不是 {unit_user}（uid={want}）→ 网关读不到，池子会是 0：\n"
+              f"        sudo chown -R {unit_user}:{unit_user} {auth_dir}")
+        unreadable = [f for f in files if not os.access(os.path.join(auth_dir, f), os.R_OK)]
+        check(not unreadable, "凭证文件当前用户可读", f"当前用户读不到 {len(unreadable)} 个凭证文件")
+
+    # 3) keys.json 权限（含明文调用 key）
+    kp = keys_path()
+    if os.path.exists(kp):
+        mode = oct(os.stat(kp).st_mode & 0o777)
+        check(mode in ("0o600", "0o400"), f"keys.json 权限 {mode}", f"keys.json 权限 {mode}（建议 600：内含明文调用 key）")
+    else:
+        ok.append("keys.json 不存在（网关不鉴权）")
+
+    # 4) 管理面前置条件（上游 fail-fast 与面板依赖）
+    admin_enabled = (CFG.get("admin") or {}).get("enabled")
+    check(bool(admin_enabled), "admin.enabled=true", "admin.enabled 未开：面板与 /admin/* 端点都不会注册")
+    if admin_enabled:
+        check(bool(CFG.get("api_key")), "api_key 非空（admin.enabled 的前置）", "admin.enabled=true 但 api_key 为空 → 网关会拒绝启动")
+
+    # 5) 运行态
+    if systemctl("is-active", GATEWAY_SVC) == "active":
+        st, h = req("/healthz", "", timeout=5)
+        if st == 200:
+            total, healthy = h.get("total", 0), h.get("healthy", 0)
+            check(healthy > 0, f"可接活账号 {healthy}/{total}", f"账号总数 {total}，可接活 {healthy} → 看上面的 auths 属主检查")
+            realms = [k for k, v in (h.get("realm_servable") or {}).items() if v]
+            ok.append("可接活域: " + (",".join(realms) or "无"))
+        else:
+            problems.append(f"/healthz 异常（HTTP {st}）：{err_msg(h)}")
+    else:
+        problems.append(f"{GATEWAY_SVC} 未运行（sudo systemctl start {GATEWAY_SVC}）")
+    check(systemctl("is-active", TUNNEL_SVC) == "active", f"{TUNNEL_SVC} 运行中", f"{TUNNEL_SVC} 未运行（公网不可达）")
+
+    for line in ok:
+        print(f"  ✓ {line}")
+    for line in problems:
+        print(f"  ✗ {line}")
+    print(f"\n{len(ok)} 项正常，{len(problems)} 项待处理" + ("（都有可执行的修复命令）" if problems else ""))
+    return 1 if problems else 0
+
+
 # --------------------------------------------------------------------------- 入口
 
 def main():
@@ -564,6 +672,8 @@ def main():
         cmd_panel()
     elif cmd == "config":
         cmd_config()
+    elif cmd in ("doctor", "check-up"):
+        sys.exit(cmd_doctor())
     elif cmd == "key":
         sub = rest[0] if rest else "list"
         if sub == "list":

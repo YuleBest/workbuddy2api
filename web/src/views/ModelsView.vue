@@ -23,6 +23,19 @@ async function load() {
 }
 void load()
 
+// 上游 credits 字段两个域形态不一致：CN 是 "x0.21"，global 是 "x0.34 credits"。
+// 统一取 x 后的数字；缺失（上游未给）显示 —，形态不认识时原样展示。
+function creditRate(raw?: string): { text: string; tone: string } {
+  const v = (raw ?? '').trim()
+  if (!v) return { text: '—', tone: '' }
+  const hit = /x\s*([0-9]+(?:\.[0-9]+)?)/i.exec(v)
+  if (!hit) return { text: v, tone: '' }
+  const val = Number(hit[1])
+  if (val === 0) return { text: 'x0.00 免费', tone: 'ok' }
+  if (val >= 1) return { text: `x${val.toFixed(2)}`, tone: 'warn' }
+  return { text: `x${val.toFixed(2)}`, tone: '' }
+}
+
 // id 形如 "cn:deepseek-v4-flash" / "global:gpt-5.4"：拆出域做标签，模型名单独展示。
 const sorted = computed(() =>
   [...models.value]
@@ -51,6 +64,7 @@ const maxContext = computed(() => models.value.reduce((m, x) => Math.max(m, x.co
     <section class="panel">
       <div class="panel-head">
         <h2>可用模型</h2>
+        <span class="note">倍率 = 上游积分扣费倍数（x0.00 为限时免费，越高越费积分）</span>
         <span v-if="loadedAt" class="note">更新于 {{ new Date(loadedAt).toLocaleTimeString('zh-CN') }}</span>
       </div>
 
@@ -64,6 +78,7 @@ const maxContext = computed(() => models.value.reduce((m, x) => Math.max(m, x.co
           <tr>
             <th>模型</th>
             <th>域</th>
+            <th class="n">积分倍率</th>
             <th>推理档位</th>
             <th class="n">上下文长度</th>
             <th class="n">单次最大输出</th>
@@ -76,6 +91,9 @@ const maxContext = computed(() => models.value.reduce((m, x) => Math.max(m, x.co
             <td>
               <span v-if="m.realm" class="tag">{{ m.realm === 'global' ? '国际版' : '国内版' }}</span>
               <span v-else class="muted small">—</span>
+            </td>
+            <td class="n">
+              <span class="tag" :class="creditRate(m.credits).tone">{{ creditRate(m.credits).text }}</span>
             </td>
             <td class="small muted">
               <template v-if="m.reasoning_supported_efforts?.length">
