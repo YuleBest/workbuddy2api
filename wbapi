@@ -68,10 +68,33 @@ def pad(text, width, right=False):
 
 
 def sh(*args):
-    return subprocess.run(args, capture_output=True, text=True)
+    try:
+        return subprocess.run(args, capture_output=True, text=True)
+    except OSError:
+        # Windows 上没有 systemctl/journalctl 这类命令：返回空结果而不是崩
+        class _R:
+            returncode = 127
+            stdout = ""
+            stderr = ""
+        return _R()
+
+
+IS_WIN = os.name == "nt"
 
 
 def systemctl(*args):
+    if IS_WIN:
+        # 服务由计划任务（wbapi-gateway / wbapi-tunnel）托管：
+        # 网关探活走 /healthz，隧道看 cloudflared 进程在不在。
+        if args and args[0] == "is-active":
+            svc = args[1] if len(args) > 1 else ""
+            if svc == GATEWAY_SVC:
+                st, _ = req("/healthz", "", timeout=3)
+                return "active" if st == 200 else "inactive"
+            if svc == TUNNEL_SVC:
+                r = sh("tasklist", "/FI", "IMAGENAME eq cloudflared.exe")
+                return "active" if "cloudflared.exe" in (r.stdout or "") else "inactive"
+        return ""
     r = sh("systemctl", *args)
     return r.stdout.strip() or r.stderr.strip()
 
@@ -639,10 +662,41 @@ def redact_local(cfg):
 # --------------------------------------------------------------------------- 服务
 
 def cmd_log(n=30):
+    if IS_WIN:
+        # Windows：journalctl 不存在，读项目根日志（Go 的 log 默认走 stderr）
+        for name in ("gateway.err.log", "gateway.log"):
+            path = os.path.join(PROJECT, name)
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                if lines:
+                    print("".join(lines[-n:]), end="")
+                    return
+            except FileNotFoundError:
+                continue
+        print(f"（{PROJECT} 下没有网关日志文件）")
+        return
     print(sh("journalctl", "-u", GATEWAY_SVC, "-n", str(n), "--no-pager").stdout)
 
 
 def cmd_svc(action):
+    if IS_WIN:
+        # 计划任务版：start=Start-ScheduledTask，stop=结束进程，restart=先停后起
+        for svc, proc in ((GATEWAY_SVC, "server.exe"), (TUNNEL_SVC, "cloudflared.exe")):
+            if action == "start":
+                r = sh("schtasks", "/Run", "/TN", svc)
+                ok = r.returncode == 0
+            elif action == "stop":
+                r = sh("taskkill", "/F", "/IM", proc)
+                ok = r.returncode == 0
+            else:  # restart
+                sh("taskkill", "/F", "/IM", proc)
+                import time as _t
+                _t.sleep(2)
+                r = sh("schtasks", "/Run", "/TN", svc)
+                ok = r.returncode == 0
+            print(f"{action} {svc}: {'[✓] 完成' if ok else '[!] 失败：' + (r.stderr or r.stdout or '').strip()}")
+        return
     for svc in (GATEWAY_SVC, TUNNEL_SVC):
         print(f"{action} {svc}: {systemctl(action, svc) or 'ok'}")
 
@@ -652,6 +706,22 @@ def cmd_tunnel(args):
     if sub == "status":
         print("隧道:", systemctl("is-active", TUNNEL_SVC), f"(https://{PUBLIC_HOST})")
         return
+    if IS_WIN:
+        if sub == "stop":
+            r = sh("taskkill", "/F", "/IM", "cloudflared.exe")
+            print(f"stop {TUNNEL_SVC}: {'[✓] 完成' if r.returncode == 0 else '[!] 未在运行'}")
+            return
+        if sub == "start":
+            r = sh("schtasks", "/Run", "/TN", TUNNEL_SVC)
+            print(f"start {TUNNEL_SVC}: {'[✓] 完成' if r.returncode == 0 else '[!] 失败：' + (r.stderr or r.stdout or '').strip()}")
+            return
+        if sub == "restart":
+            sh("taskkill", "/F", "/IM", "cloudflared.exe")
+            import time as _t
+            _t.sleep(2)
+            r = sh("schtasks", "/Run", "/TN", TUNNEL_SVC)
+            print(f"restart {TUNNEL_SVC}: {'[✓] 完成' if r.returncode == 0 else '[!] 失败：' + (r.stderr or r.stdout or '').strip()}")
+            return
     print(systemctl(sub, TUNNEL_SVC) or f"[✓] {sub} 完成")
 
 
@@ -663,7 +733,10 @@ def cmd_doctor():
     起因：auths/ 被 chown 给别的 uid 后，网关进程读不到 0600 的凭证文件 → 池子
     0 个账号、模型列表空、面板空白，但服务状态仍是 active，肉眼很难定位。
     """
-    import pwd
+    try:
+        import pwd
+    except ImportError:
+        pwd = None  # Windows：没有 uid/属主概念，跳过相关检查
 
     problems = []
     ok = []
@@ -672,19 +745,26 @@ def cmd_doctor():
         (ok if cond else problems).append(ok_msg if cond else bad_msg)
 
     # 1) unit 与二进制
-    unit_user = systemctl("show", "-p", "User", "--value", GATEWAY_SVC).strip() or "root"
-    # ExecStart 要从 unit 文件里读：systemctl show --value 给的是 { path=... ; argv[]=... } 结构
-    frag = systemctl("show", "-p", "FragmentPath", "--value", GATEWAY_SVC).strip()
-    unit_exec = ""
-    if frag and os.path.exists(frag):
-        with open(frag) as f:
-            for line in f:
-                if line.startswith("ExecStart="):
-                    unit_exec = line.split("=", 1)[1].strip()
-                    break
-    check(bool(unit_exec), f"unit 已加载（User={unit_user}）", f"{GATEWAY_SVC} 未加载（systemd 里没有这个服务？）")
-    exe = unit_exec.split()[0] if unit_exec else ""
-    check(os.path.exists(exe), f"二进制存在：{exe}", f"unit 指向的二进制不存在：{exe}")
+    if IS_WIN:
+        # Windows：服务=计划任务，二进制=项目根的 server.exe
+        exe = os.path.join(PROJECT, "server.exe")
+        task = sh("schtasks", "/Query", "/TN", GATEWAY_SVC)
+        check(task.returncode == 0, "计划任务已注册（wbapi-gateway）", "计划任务 wbapi-gateway 未注册（开机自启失效）")
+        check(os.path.exists(exe), f"二进制存在：{exe}", "server.exe 不存在（先 go build -o server.exe ./cmd/server）")
+    else:
+        unit_user = systemctl("show", "-p", "User", "--value", GATEWAY_SVC).strip() or "root"
+        # ExecStart 要从 unit 文件里读：systemctl show --value 给的是 { path=... ; argv[]=... } 结构
+        frag = systemctl("show", "-p", "FragmentPath", "--value", GATEWAY_SVC).strip()
+        unit_exec = ""
+        if frag and os.path.exists(frag):
+            with open(frag) as f:
+                for line in f:
+                    if line.startswith("ExecStart="):
+                        unit_exec = line.split("=", 1)[1].strip()
+                        break
+        check(bool(unit_exec), f"unit 已加载（User={unit_user}）", f"{GATEWAY_SVC} 未加载（systemd 里没有这个服务？）")
+        exe = unit_exec.split()[0] if unit_exec else ""
+        check(os.path.exists(exe), f"二进制存在：{exe}", f"unit 指向的二进制不存在：{exe}")
 
     # 2) auths 属主/可读性 —— 本次事故的根因
     auth_dir = CFG.get("auth_dir") or "./auths"
@@ -692,7 +772,7 @@ def cmd_doctor():
         auth_dir = os.path.join(os.path.dirname(os.path.realpath(CONFIG_PATH)), auth_dir)
     auth_dir = os.path.normpath(auth_dir)
     try:
-        want = pwd.getpwnam(unit_user).pw_uid
+        want = pwd.getpwnam(unit_user).pw_uid if pwd else None
     except KeyError:
         want = None
     files = [f for f in sorted(os.listdir(auth_dir)) if f.endswith(".json")] if os.path.isdir(auth_dir) else []
@@ -710,7 +790,10 @@ def cmd_doctor():
     kp = keys_path()
     if os.path.exists(kp):
         mode = oct(os.stat(kp).st_mode & 0o777)
-        check(mode in ("0o600", "0o400"), f"keys.json 权限 {mode}", f"keys.json 权限 {mode}（建议 600：内含明文调用 key）")
+        if IS_WIN:
+            ok.append("keys.json 存在（Windows 下不检查权限位）")
+        else:
+            check(mode in ("0o600", "0o400"), f"keys.json 权限 {mode}", f"keys.json 权限 {mode}（建议 600：内含明文调用 key）")
     else:
         ok.append("keys.json 不存在（网关不鉴权）")
 
