@@ -33,6 +33,9 @@ type Config struct {
 	Pool      *pool.Pool
 	Scheduler *scheduler.Scheduler
 	Keys      *server.KeyStore
+	// Chat 数据面 handler：面板对话经它走完整链路（选号 / 错误策略 / 请求日志），
+	// admin 只把 admin token 换成数据面 key。nil = 未接入，对话接口回 503。
+	Chat http.Handler
 	// Models 返回网关模型列表（含动态拉取与静态回退），来自 gateway handler。
 	Models func() []map[string]any
 	// Token 管理 token；空 = 不鉴权（此时与网关同为完全开放语义）。
@@ -96,6 +99,10 @@ func NewHandler(cfg Config) *Handler {
 	h.mux.HandleFunc("GET /api/admin/models", h.auth(h.models))
 	h.mux.HandleFunc("GET /api/admin/config", h.auth(h.config))
 	h.mux.HandleFunc("POST /api/admin/tasks/{task}", h.auth(h.runTask))
+	// 面板对话：OpenAI 兼容面（/v1 前缀），供前端 openai SDK 直连。与上面的 REST
+	// 端点分开，是因为那些端点返回各自的信封（如 /models 的 {models:[...]}），
+	// 混在同一前缀下会让 SDK 按 OpenAI 格式解析而误判。
+	h.mux.HandleFunc("POST /api/admin/v1/chat/completions", h.auth(h.chatCompletions))
 	// 静态资源：SPA 本体，不鉴权。
 	h.mux.HandleFunc("GET /admin", h.redirectIndex)
 	h.mux.HandleFunc("GET /admin/", h.serveSPA)

@@ -235,6 +235,8 @@ func main() {
 			Pool:      p,
 			Scheduler: sch,
 			Keys:      keys,
+			// 面板对话复用数据面：admin 侧伪造请求 + 换 key，链路零复制。
+			Chat:      h,
 			Models:    h.ModelList,
 			Token:     adminToken,
 			ConfigDoc: cfg.Redacted(),

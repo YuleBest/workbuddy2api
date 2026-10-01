@@ -44,6 +44,7 @@ function onRefreshChange(e: Event) {
         <RouterLink to="/keys">调用密钥</RouterLink>
         <RouterLink to="/logs">请求日志</RouterLink>
         <RouterLink to="/models">模型</RouterLink>
+        <RouterLink to="/chat">模型对话</RouterLink>
         <RouterLink to="/settings">设置</RouterLink>
       </nav>
 

@@ -634,6 +634,7 @@ button.ghost:hover:not(:disabled) {
 input[type='text'],
 input[type='password'],
 input[type='search'],
+textarea,
 select {
   font: inherit;
   font-size: 13px;
@@ -646,6 +647,7 @@ select {
 }
 
 input:focus,
+textarea:focus,
 select:focus {
   border-color: var(--accent);
   outline: none;
@@ -1152,4 +1154,205 @@ table.data.logs {
 
 table.data.recent {
   min-width: 620px;
+}
+
+/* ---------------------------------------------------------------- 模型对话 */
+
+.chat-pick {
+  max-width: 420px;
+  flex: 1 1 320px;
+}
+
+.chat-pick select {
+  width: 100%;
+}
+
+/* 对话区自己滚：长回答不会把输入框顶出视口。 */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 300px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chat-msg .who {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat-msg.user {
+  align-items: flex-end;
+}
+
+.chat-msg.user .plain {
+  max-width: 80%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+.chat-msg.assistant .md {
+  width: 100%;
+}
+
+/* 流式状态行：光标 + （思考模型还在想时的）提示。align-self 必需，
+   否则会被列向 flex 拉成整行。 */
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+.caret {
+  width: 7px;
+  height: 13px;
+  background: var(--accent);
+  animation: chat-caret 1s step-end infinite;
+}
+
+@keyframes chat-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.chat-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+
+.chat-input textarea {
+  resize: vertical;
+  min-height: 62px;
+  line-height: 1.5;
+}
+
+/* markdown 正文：只做基础排版，不做语法高亮。 */
+.md {
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0 0 10px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-size: 15px;
+  line-height: 1.35;
+  margin: 16px 0 8px;
+}
+
+.md h1 {
+  font-size: 18px;
+}
+
+.md h2 {
+  font-size: 16px;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.md li {
+  margin: 2px 0;
+}
+
+.md code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px 4px;
+}
+
+.md pre {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.md pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.md table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+  text-align: left;
+}
+
+.md th {
+  background: var(--surface-2);
+}
+
+.md a {
+  color: var(--accent);
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 14px 0;
+}
+
+.md img {
+  max-width: 100%;
 }

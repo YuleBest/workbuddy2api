@@ -13,6 +13,7 @@ const routes = [
   { path: '/keys', name: 'keys', component: () => import('./views/KeysView.vue') },
   { path: '/logs', name: 'logs', component: () => import('./views/LogsView.vue') },
   { path: '/models', name: 'models', component: () => import('./views/ModelsView.vue') },
+  { path: '/chat', name: 'chat', component: () => import('./views/ChatView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/overview' },
 ]

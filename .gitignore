@@ -23,6 +23,8 @@ data/
 /trial
 # Windows 构建产物（server.exe / acct.exe / activity.exe / signin.exe / stats.exe / trial.exe …）
 /*.exe
+# go build 替换正在运行的 .exe 时会留一份 <名字>~ 备份，/*.exe 匹配不到它
+/*.exe~
 
 # Config with secrets (use config.example.json)
 config.json
