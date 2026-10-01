@@ -10,8 +10,8 @@ data/
 .env.*
 
 # Binaries (anchored to repo root only — bare "login"/"credit" would also ignore cmd/login/, cmd/credit/)
-# /server /acct /stats 是本机部署用的名字（systemd ExecStart 指向仓库根的 ./server）：
-# 漏了任何一个都会让十几 MB 的二进制被 git add -A 直接提交进来。
+# 每个 cmd/<name> 的本机构建产物都落在仓库根：Linux 版无扩展名（systemd ExecStart 指向 ./server），
+# Windows 版带 .exe。漏了任何一个都会让十几 MB 的二进制被 git add -A 直接提交进来。
 /login
 /credit
 /wb2api
@@ -19,10 +19,10 @@ data/
 /server
 /acct
 /stats
-/login.exe
-/credit.exe
-/wb2api.exe
-/signin_bin.exe
+/activity
+/trial
+# Windows 构建产物（server.exe / acct.exe / activity.exe / signin.exe / stats.exe / trial.exe …）
+/*.exe
 
 # Config with secrets (use config.example.json)
 config.json
@@ -35,10 +35,14 @@ __pycache__/
 # 为什么显式列 .apikey：它不是 config.json 的别名，而是 login.sh 等工具单独落盘的密钥文件，
 # 不写进这里会被 git add -A 直接提交（含明文 api_key）。
 .apikey
-.server.pid
-wb2api.pid
+# 进程号：.server.pid / wbapi.pid 是 Linux 侧，gateway.pid / tunnel.pid 由 Windows 计划任务写入
+*.pid
 *.log
 draft_*_folder/
+
+# Windows 计划任务入口：内容是本机绝对路径，只用于本机开机自启，不进版本库
+/gateway-task.cmd
+/tunnel-task.cmd
 
 # 前端依赖（管理面板源码在 web/，构建产物 internal/admin/dist 要进版本库）
 node_modules/
