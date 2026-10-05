@@ -1,7 +1,7 @@
 # Auth & secrets
 auths/
 data/
-# 多 key 存储：keys.json 内含明文调用 key，绝不能进版本库（示例结构见 README 的"调用密钥"）
+# 多 key 存储：keys.json 内含明文调用 key，绝不能进版本库（示例结构见 docs/admin.md）
 /keys.json
 *.key
 *.pem
@@ -58,9 +58,9 @@ backups/
 LOOP.md
 PLAN.md
 SPEC.md
-docs/
 
-# 设计/计划文档（但 README.md / DEVELOPMENT.md 必须进版本库）
+# 设计/计划文档（README.md / DEVELOPMENT.md / docs/ 下的文档必须进版本库）
 *.md
 !README.md
 !DEVELOPMENT.md
+!docs/*.md

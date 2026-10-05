@@ -181,6 +181,15 @@ cd web && pnpm build              # 含类型检查
 
 ## 文档约定
 
-`.gitignore` 用 `*.md` 排除所有 Markdown，只白名单放行 `README.md` 与 `DEVELOPMENT.md`。
-新增需要进版本库的文档，要同时加一条 `!文件名.md`。
-本机运维笔记 `NOTES.md` 属于个人环境信息（主机名、路径、域名），保持 gitignore 状态，不进版本库。
+| 文档 | 定位 | 长度约束 |
+|---|---|---|
+| `README.md` | 门面：是什么、怎么跑起来、文档索引 | **≤ 1500 字**（硬约束，宁短勿长） |
+| `docs/*.md` | 详细内容：能力、部署、管理面、配置、合规 | 单篇 ≤ 1000 行 |
+| `DEVELOPMENT.md` | 维护者：目录结构、构建链路、内部约定、测试 | — |
+
+- README 只放「一眼看完」的信息，细节一律下沉到 `docs/`，两边靠文档索引互相链接；
+  往 README 加内容前先想清楚它是不是该进 `docs/`。
+- 改完 README 量一下：`wc -m README.md` 应 < 1500。
+- `.gitignore` 用 `*.md` 排除 Markdown，白名单放行 `README.md`、`DEVELOPMENT.md` 与 `docs/*.md`；
+  新增其它需要进版本库的文档，要加一条 `!路径.md`。
+- 本机运维笔记 `NOTES.md` 属于个人环境信息（主机名、路径、域名），保持 gitignore 状态，不进版本库。
