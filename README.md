@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>把 CodeBuddy 账号变成 OpenAI 兼容 API 的多账号网关</b><br>
-  OAuth 登录 · 账号池轮转 · 熔断与冷却 · 会话粘性 · 积分补充
+  OAuth 登录 · 账号池轮转 · 熔断与冷却 · 会话粘性 · 积分补充 · 内置管理面板
 </p>
 
 <p align="center">
@@ -18,6 +18,11 @@
 </p>
 
 ---
+
+> **本仓库是 [Sliverkiss/workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 的 fork**，由 [@YuleBest](https://github.com/YuleBest) 维护。
+> 上游的账号池、调度、改写管线等核心能力原样保留，另加了**内置 Web 管理后台**、**多 key 存储**、
+> **`wbapi` 运维 CLI** 与 **Windows 计划任务部署**，完整清单见[本分支相对上游的改动](#本分支相对上游的改动)。
+> 与上游兼容：配置键、HTTP 端点、脚本入口都是增量的，可直接替换上游二进制。
 
 ## 项目简介
 
@@ -32,7 +37,19 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 ### 本项目不做什么
 
 - **只做上游网关，不做下游协议转换** — 本项目仅负责对接上游 ```CodeBuddy``` 并暴露 OpenAI Chat 协议；Anthropic Messages、Gemini 等其他协议的适配应由下游网关负责；
-- **不内嵌 Web 管理面板** — 网关核心保持精简，可视化面板作为独立项目维护，数据直取上游接口，不增加网关适配负担。
+- **不做多租户** — 网关是单人 / 小团队的自托管工具，key 只用来区分「谁能调用」，不区分配额、不记账到人。
+
+### 本分支相对上游的改动
+
+| 改动 | 说明 |
+|---|---|
+| **内置 Web 管理后台** | `internal/admin`（观测 API + 运维动作）+ `web/`（Vue 3 SPA），构建产物经 `go:embed` 打进二进制，不需要单独部署前端或数据库。见 [Web 管理后台](#web-管理后台) |
+| **多 key 存储** | `keys.json` 管理多把调用 key，支持热重载与面板 / CLI 增删，不用再改配置重启。见 [调用密钥](#调用密钥多-key) |
+| **`wbapi` 运维 CLI** | 一个 Python 3 脚本收口日常运维：状态、自检、账号、配额、密钥、模型、任务、日志、服务启停。见 [运维 CLI](#运维-cliwbapi) |
+| **Windows 计划任务部署** | `wbapi start\|stop\|restart\|status\|log\|doctor` 在 Windows 下自动改走 `schtasks` / `taskkill`，配合 `gateway-task.cmd` / `tunnel-task.cmd` 做登录自启 |
+| **管理面扩展** | 新增 `GET/POST /api/admin/*`（总览、账号、密钥、日志、模型、配置、任务触发）与账号「清冷却」动作；面板内对话走 `/api/admin/v1/chat/completions`，与真实客户端同链路 |
+| **ZCode 请求体归一化** | `internal/upstream/zcode.go` 把 AI-SDK v5 / ZCode 形态的请求（内容块数组、字典形态 tools、`maxOutputTokens`）归一成标准 OpenAI 形态，并把没有配对的孤儿 tool 消息降级为 user，避免上游报错 |
+| **登录脚本权限指引** | `login.sh` 按部署模式给建议：systemd 主机提示 chown 给 unit 里的 `User`，只有真容器环境才提示 `10001` |
 
 ### 社区前端面板
 
@@ -44,7 +61,7 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 
 > ⚠️ 合规须知：本项目是**非官方**网关，使用 ```CodeBuddy``` 账号作为上游，**仅限本人授权账号、本机 / 私有环境测试**。详细边界见[安全与合规](#安全与合规)。
 
-📖 完整文档见 [GitHub Wiki](https://github.com/Sliverkiss/workbuddy2api/wiki)。
+📖 上游完整文档见 [GitHub Wiki](https://github.com/Sliverkiss/workbuddy2api/wiki)。
 
 ## 核心能力
 
@@ -61,12 +78,14 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 
 - **分级熔断与冷却** — 429 软冷却（600s 起指数退避、封顶 `soft_rate_max`）、404 固定浅冷却、402 / 余额耗尽硬冷却至次日 04:00、连续失败熔断（`breaker_threshold` 触发后指数退避封顶 6h）
 - **模型级限流独立冷却** — 6004（该模型使用量超限）只冷却触发调用的模型，切其他模型立即可用；`/status` 透出 `rate_limited_models` 台账
-- **账号临时停用 / 恢复** — 运维可把某个号临时摘出选号池、观察后再放回，不必删凭证（issue #138/#118）。语义是「对话流量摘除」而非「账号冻结」：停用期间签到、token 保活、排程任务照常执行，账号仍在池里、状态照常透出。与系统自动禁用是**两个独立状态位**（`manual_disabled` / `disabled`），各自清除、都清空才回到选号池——避免运维意图被签到解冻等自动复活路径意外解除；停用状态随池状态落盘，重启保留。入口：`/admin/accounts/{uid}/{disable,enable,revive}` 端点 + `cmd/acct` CLI（默认关闭，`admin.enabled` 显式开启）
+- **账号临时停用 / 恢复** — 运维可把某个号临时摘出选号池、观察后再放回，不必删凭证（issue #138/#118）。语义是「对话流量摘除」而非「账号冻结」：停用期间签到、token 保活、排程任务照常执行，账号仍在池里、状态照常透出。与系统自动禁用是**两个独立状态位**（`manual_disabled` / `disabled`），各自清除、都清空才回到选号池——避免运维意图被签到解冻等自动复活路径意外解除；停用状态随池状态落盘，重启保留。入口：`/admin/accounts/{uid}/{disable,enable,revive}` 端点 + `cmd/acct` CLI + 面板「账号池」页 + `wbapi acct`（默认关闭，`admin.enabled` 显式开启）
+- **清冷却** — 把某个号的软冷却 / 降权状态立刻清掉、拉回选号池（熔断计数与积分不动），用于「手动确认这个号没问题了」。面板「账号池」页与 `wbapi` 可用
 - **状态持久化** — 池状态（积分 / 冷却 / 熔断 / 计数）本地原子落盘 `state.json`，可选镜像至 Upstash Redis，重启后择优恢复
 
 ### 请求链路
 
 - **流式 + 非流式** — 出站强制 `stream:true`；SSE 帧按 OpenAI 规范白名单重建；非流式由本地聚合为单响应
+- **请求体归一化** — 出站前把非标准形态折进标准 OpenAI：AI-SDK v5 / ZCode 的内容块数组（`text` / `reasoning` / `tool-call` / `tool-result` / `image`）、字典形态的 `tools`、`maxOutputTokens` 别名；孤儿 tool 消息降级为 user（上游 11148），`image_url` 字符串兼容为对象形态，`developer` 角色与 `tool_choice` 归一
 - **DeepSeek 思维链注入** — 出站请求体注入 `thinking.type=enabled` + 默认档位，`reasoning_content` 多轮回填，`reasoning_effort` 按模型档位自动降级
 - **系统提示词三模式**（`prompt.mode`，缺省 `passthrough`） —
   - `passthrough`（缺省）：透传客户端原始 system，遇内容拦截自动降级中性提示词重试
@@ -93,7 +112,7 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 - **开学季任务**（12 点）— 任务点亮 + claim + 自动抽空抽奖余额，活动下线时自动跳过
 - **夜猫子任务**（01 点）— 夜猫窗口（23:00–08:00 CST）内补一次 black_cat 任务
 
-六类任务独立排程、独立开关（`schedule.*_enabled`），互不影响。
+六类任务独立排程、独立开关（`schedule.*_enabled`），互不影响；都能从面板「总览」页或 `wbapi task` 手动触发一次。
 
 ### 双域适配
 
@@ -103,10 +122,11 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 
 ### 辅助工具
 
+- **Web 管理后台** — 内置面板，浏览器里看账号池、密钥、请求日志、模型与生效配置，做停用 / 恢复 / 复活 / 清冷却、密钥增删、任务手动触发，还能直接在面板里试模型（见 [Web 管理后台](#web-管理后台)）
+- **`wbapi` 运维 CLI** — 一个脚本覆盖状态 / 自检 / 账号 / 配额 / 密钥 / 模型 / 任务 / 日志 / 服务启停（见 [运维 CLI](#运维-cliwbapi)）
 - 积分日报：`./credit.sh`（美化 / `-json`，realm 感知双域）
 - 手动签到：`./signin.sh`（批量、幂等不重复计）
 - 账号停用 / 恢复：`./acct.sh list | disable <uid> [原因] | enable <uid> | revive <uid>`（需 `admin.enabled`，走网关管理端点）
-- **Web 管理后台**（本仓库内置，Vue 3 + go:embed）：`/admin/` 一个页面看账号池、密钥、请求日志、模型与生效配置，账号的停用 / 恢复 / 复活 / 清冷却、密钥增删、定时任务手动触发都能点（需 `admin.enabled`，见 [Web 管理后台](#web-管理后台)）
 - 领养联动 / 任务查询：`scripts/task_runner.py`（成长任务一体机，默认 dry-run）
 - 个性化提示词：`prompt.file` 指向自定义提示词文件即整体替换内置默认（`custom`/`append` 模式生效）
 
@@ -115,10 +135,13 @@ WorkBuddy2API 是一个自托管的 **OpenAI 兼容上游网关**，将 ```CodeB
 ```mermaid
 flowchart LR
     Client["客户端 / SDK\nOpenAI 兼容请求"] --> H
+    Panel["Web 管理后台\n/admin/ (Vue 3 SPA)"] --> A
+    CLI["wbapi CLI / acct.sh"] --> A
 
     subgraph GWI["WorkBuddy2API 网关 :7863"]
-        H["HTTP Handler\n鉴权 · 提示词改写 · 轮转"] --> P
+        H["数据面 Handler\n鉴权 · 提示词改写 · 轮转"] --> P
         H --> S
+        A["管理面\n/api/admin/* · /admin/accounts/*"] -.同一批 pool / scheduler 入口.-> P
         P["账号池\n三因子加权 · 熔断 · 冷却 · 租约"] --> U
         S["会话粘性路由"] -.绑定镜像.-> REDIS
         T["定时调度\n签到 09/21 · 旅行 09/21 · 活跃地图 10 · 保活 22\n开学季 12 · 夜猫子 01"] --> P
@@ -131,20 +154,23 @@ flowchart LR
     U -->|"billing / auth / growth"| CB
 ```
 
-上游请求在出站前经历统一的改写管线（`internal/upstream/payload.go`）：强制 `stream:true`、`developer` 角色归一、tool_choice 归一、`image_url` 字符串兼容为 OpenAI 对象形态、DeepSeek 思维链注入、`reasoning_effort` 档位降级、`reasoning_content` 回填、指纹脱敏。
+上游请求在出站前经历统一的改写管线（`internal/upstream/payload.go`）：请求体归一化（含 ZCode / AI-SDK 形态）、强制 `stream:true`、`developer` 角色归一、`tool_choice` 归一、`image_url` 字符串兼容为 OpenAI 对象形态、DeepSeek 思维链注入、`reasoning_effort` 档位降级、`reasoning_content` 回填、指纹脱敏。
+
+面板里的「模型对话」不是旁路：它把请求交给同一个数据面 handler，选号、粘性、冷却换号、请求日志、统计全部照走，等于一条随手的链路自检。
 
 ## 快速开始
 
 ### 环境要求
 
-- **Docker + Docker Compose**（推荐部署方式，镜像内已含 `app` 低权限用户与全部工具脚本）
+- **Docker + Docker Compose**（推荐部署方式，镜像内已含 `app` 低权限用户与全部工具脚本），或 **Windows 10/11 + 计划任务**（本 fork 的部署形态）
 - 一个或多个已注册的 CodeBuddy 账号，用于 OAuth 登录
-- 宿主机 Go ≥ 1.22（仅源码构建时需要）
+- 宿主机 Go ≥ 1.22（仅源码构建时需要）、Node ≥ 20 + pnpm ≥ 9（仅改前端时需要）
+- `wbapi` CLI 需要 Python 3
 
 ### Docker Compose 一键部署
 
 ```bash
-git clone https://github.com/Sliverkiss/workbuddy2api.git
+git clone https://github.com/YuleBest/workbuddy2api.git
 cd workbuddy2api
 cp config.example.json config.json
 ```
@@ -178,18 +204,54 @@ curl -s http://localhost:7863/healthz
 > docker compose exec -it wb2api bash -c './login.sh' && docker compose restart wb2api
 > ```
 
+### Windows 原生部署（计划任务）
+
+不需要 Docker：构建出 `server.exe`，交给 Windows 计划任务托管，`wbapi` 负责日常操作。
+
+```powershell
+Copy-Item config.example.json config.json
+# 编辑 config.json；建议把 listen 设为 127.0.0.1:7863，且务必设置 api_key
+
+go build -trimpath -ldflags="-s -w" -o server.exe ./cmd/server
+go build -trimpath -ldflags="-s -w" -o login.exe ./cmd/login
+go build -trimpath -ldflags="-s -w" -o signin_bin.exe ./cmd/signin
+go build -trimpath -ldflags="-s -w" -o credit.exe ./cmd/credit
+```
+
+把两个启动入口注册成计划任务（本仓库的约定名字是 `wbapi-gateway` / `wbapi-tunnel`，`wbapi` 的服务命令按这两个名字操作）：
+
+- `gateway-task.cmd` — 启动 `server.exe -config config.json`，PID 写 `gateway.pid`，日志写 `gateway.log` / `gateway.err.log`
+- `tunnel-task.cmd` — 启动 `cloudflared.exe` 隧道，PID 写 `tunnel.pid`
+
+```powershell
+# 以「登录时触发」注册（示例；按需改成开机触发或加延迟）
+schtasks /Create /TN wbapi-gateway /SC ONLOGON /TR "C:\path\to\wb2api-fork\gateway-task.cmd" /F
+schtasks /Create /TN wbapi-tunnel  /SC ONLOGON /TR "C:\path\to\wb2api-fork\tunnel-task.cmd"  /F
+```
+
+这两个 `.cmd` 的内容是本机绝对路径，已被 `.gitignore` 排除，请按自己的目录改写。之后统一用 `wbapi` 操作：
+
+```bash
+uv run --no-project python wbapi status      # 网关 / 隧道 / 池子状态
+uv run --no-project python wbapi start       # = schtasks /Run /TN wbapi-gateway + tunnel
+uv run --no-project python wbapi restart     # 重启（隧道会闪断几秒）
+uv run --no-project python wbapi log 50      # 网关日志尾部
+```
+
+> `wbapi` 是 Python 3 脚本，shebang 依赖 `python3`。Windows 上 `python3` 常被 Microsoft Store 的应用执行别名占用（跑起来没有任何输出），用 `uv run --no-project python wbapi ...` 或指向真实解释器。
+
+添加账号在 Git Bash 中运行 `login.sh`（它还负责 CN 首次签到以及 Global 注册地区 / trial 流程），或在浏览器里用面板的「账号池」页观察结果。
+
 ### 源码构建
 
-管理面板是 Vue 3 单页应用，构建产物经 `go:embed` 打进二进制（仓库内已含一份构建产物，
-只改后端时可直接编译）。**改动 `web/` 下的前端代码后**，要先重新构建前端：
+管理面板是 Vue 3 单页应用，构建产物经 `go:embed` 打进二进制（仓库内已含一份构建产物，只改后端时可直接编译）。**改动 `web/` 下的前端代码后**，要先重新构建前端：
 
 ```bash
 cd web && pnpm install && pnpm build   # 产物落到 internal/admin/dist，被 go:embed 拾取
 cd .. && go build ./cmd/server
 ```
 
-开发前端时用 `pnpm dev` 起 Vite 开发服务器（已配置把 `/api/admin` 代理到 `127.0.0.1:7863`），
-改完再 `pnpm build` 落到二进制里。
+开发前端时用 `pnpm dev` 起 Vite 开发服务器（已配置把 `/api/admin` 代理到 `127.0.0.1:7863`），改完再 `pnpm build` 落到二进制里。
 
 ```bash
 go build ./...
@@ -201,40 +263,11 @@ go run ./cmd/server -config config.json
 构建二进制：
 
 ```bash
-CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o wb2api ./cmd/server
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o server ./cmd/server
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o signin_bin ./cmd/signin
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o login ./cmd/login
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o credit ./cmd/credit
 ```
-
-#### Windows 原生运行（无需 Docker）
-
-Windows 10/11 自带的 PowerShell 与 `curl.exe` 即可管理后台进程。先准备配置并构建：
-
-```powershell
-Copy-Item config.example.json config.json
-# 编辑 config.json；建议把 listen 设为 127.0.0.1:7863，且务必设置 api_key
-
-go build -trimpath -ldflags="-s -w" -o wb2api.exe ./cmd/server
-go build -trimpath -ldflags="-s -w" -o login.exe ./cmd/login
-go build -trimpath -ldflags="-s -w" -o signin_bin.exe ./cmd/signin
-go build -trimpath -ldflags="-s -w" -o credit.exe ./cmd/credit
-```
-
-使用仓库自带脚本在后台启停并查看状态：
-
-```powershell
-.\start-workbuddy2api.cmd
-.\status-workbuddy2api.cmd
-.\stop-workbuddy2api.cmd
-```
-
-PID 写入 `wb2api.pid`，标准输出与错误日志分别写入 `data/server.out.log`、
-`data/server.err.log`。停止脚本会先验证 PID 对应的可执行文件确为当前目录下的
-`wb2api.exe`，不会因陈旧 PID 误杀其他进程。
-
-添加账号可使用配套管理面板，或在 Git Bash 中运行现有 `login.sh`（它还负责 CN
-首次签到以及 Global 注册地区/trial 流程；不建议只手工调用 `login.exe` 后跳过这些步骤）。
 
 ### 验证
 
@@ -283,9 +316,10 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 | 总览 | 是否可接活、账号池分布、请求量与首字延迟、定时任务排程 | 立即执行某类定时任务；签到会同步等待并列出每个账号的结果与签到后余额 |
 | 账号池 | 每号积分余量、冷却倒计时与原因、模型级限额台账、连败降权、在途请求、凭证过期时间、按模型的实测成本、域（国内 / 国际） | 停用 / 恢复（手动位）、复活（系统自动禁用位）、清冷却 |
 | 调用密钥 | 已签发的 key（掩码）、备注、添加日期 | 新建（完整值只显示一次）、吊销 |
-| 请求日志 | 进程内最近 500 条请求：模型、昵称（uid8）、状态码、首字延迟、token、速率 | 按模型 / 账号 / 状态码筛选 |
-| 模型 | 上游动态模型表：域前缀、上下文长度、推理档位 | 手动刷新 |
-| 设置 | 生效配置（密钥类只显示"是否已配置"）、运行信息 | 调整页面刷新间隔与主题 |
+| 请求日志 | 进程内最近 500 条请求：模型、昵称（uid8）、状态码、首字延迟、token、速率 | 按模型 / 账号 / 状态码筛选，只看失败 |
+| 模型 | 上游动态模型表：域前缀、上下文长度、推理档位、倍率 | 搜索、按表头排序、复制模型 ID、展开完整字段 |
+| 模型对话 | 选模型直接开聊，流式逐字输出，助手回复按 markdown 渲染（代码块 / 列表 / 表格） | 发送 / 停止；对话走后端数据面，会进请求日志与统计 |
+| 设置 | 生效配置（密钥类只显示"是否已配置"）、运行信息 | 调整页面刷新间隔与主题、退出登录 |
 
 **前置条件**：`config.json` 里 `"admin": {"enabled": true}`（默认关闭，与 `cmd/acct` / `acct.sh` 同一开关）。
 面板的动作与上游 `/admin/accounts/{uid}/{disable,enable,revive}` 端点同语义、同状态位——
@@ -293,9 +327,66 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 
 **边界**：面板只做观测与少量运维动作，配置本身是只读的——改配置仍要编辑 `config.json` 并重启服务，
 避免在浏览器里改坏关键参数。请求日志来自进程内存环形缓冲，重启即清空；要长期留档看服务日志。
+「模型对话」会被网关注入 system prompt（跟 `prompt.mode` 走），并占用账号池的在途租约，
+池子满时可能收到 503——这是真实链路语义，不是面板缺陷。
 
 **关掉面板**：`config.json` 里设 `"admin": {"enabled": false}`，`/admin`、`/api/admin/*` 与
 `/admin/accounts/*` 端点都不再注册（`acct.sh` 同样不可用）。
+
+## 调用密钥（多 key）
+
+上游只有 `config.json` 里的一把 `api_key`，本 fork 增加了多 key 存储，方便给不同客户端各发一把、单独吊销。
+
+```json
+// keys.json（默认路径，可被 config 的 keys_file 改写；文件权限 0600，已被 .gitignore 排除）
+{
+  "keys": [
+    { "key": "sk-…", "note": "笔记本", "added": "2026-09-22T10:00:00+08:00" }
+  ]
+}
+```
+
+- **热重载**：文件内容一变（按 mtime 判断）立刻生效，新增 / 吊销**不用重启网关**；
+- **回落**：文件不存在或为空时用 `config.json` 的 `api_key`，两者都空 = 不鉴权（仅限内网）；
+- **文件损坏不致命**：JSON 解析失败会保留上一份可用 key 并打日志，不会把自己锁在门外；
+- **管理方式**：面板「调用密钥」页，或 `wbapi key list|new|revoke`（直接读写文件，网关自动热加载）。
+
+## 运维 CLI（wbapi）
+
+仓库根的 `wbapi` 是一个 Python 3 脚本，把日常运维收成一个命令，自动读 `config.json` 拿网关地址与 key：
+
+| 命令 | 作用 |
+|---|---|
+| `wbapi status` | 网关 / 隧道状态 + `/healthz` 探活 + 池子计数（默认动作，别名 `check`） |
+| `wbapi doctor` | 自检：服务入口与二进制、`auths/` 属主与可读性、`keys.json` 权限、管理面前置、运行态；有问题时非零退出 |
+| `wbapi accounts` | 账号池明细：域 / 积分 / 冷却 / 双位停用 / 限额台账 / 实测成本 |
+| `wbapi quota [test [模型]]` | 冷却与限额详情；`test` 用 `max_tokens=16` 实测模型可用性 |
+| `wbapi acct list\|disable <uid> [原因]\|enable <uid>\|revive <uid>` | 账号运维动作（与面板、`acct.sh` 同一批端点） |
+| `wbapi task <checkin\|activity\|travel\|keepalive\|school\|cat> [--wait]` | 手动触发定时任务；签到默认同步等待并打印逐号回执 |
+| `wbapi key list [--show]\|new [备注]\|revoke <前缀>` | 调用密钥的查看 / 新建 / 吊销 |
+| `wbapi models [--realm cn\|global] [--more]` | 模型表格：名 / ID / 域 / 倍率 / 能力 / 上下文 / 输出；`--more` 打完整字段 |
+| `wbapi stats [--reset]` | 请求统计（`/v1/stats`；`--reset` 清零累计） |
+| `wbapi panel` | 管理后台地址与登录提示 |
+| `wbapi config` | 生效配置（脱敏） |
+| `wbapi log [N]` | 网关最近 N 行日志（默认 30） |
+| `wbapi start\|stop\|restart` | 网关 + 隧道（Linux 走 systemd，Windows 走计划任务） |
+| `wbapi tunnel [start\|stop\|restart\|status]` | 只操作隧道 |
+
+环境变量：`WB2A_HOME`（项目根，默认脚本所在目录）、`WB2A_CONFIG`（配置文件，默认 `$WB2A_HOME/config.json`）、`WB2A_GATEWAY`（直接指定网关地址）、`WB2A_PUBLIC_HOST`（公网域名，仅用于状态显示）。
+
+Linux 下服务名固定为 `wbapi-gateway` / `wbapi-tunnel`；Windows 下对应同名计划任务与 `server.exe` / `cloudflared.exe` 进程。
+
+## 配置：本分支新增
+
+除上游配置外，本 fork 增加了三个开关（完整示例见 `config.example.json`）：
+
+| 键 / 变量 | 默认 | 说明 |
+|---|---|---|
+| `keys_file` | `"keys.json"` | 多 key 文件路径，相对工作目录解析；文件缺失 / 为空时回落 `api_key` |
+| `admin.token` | `""` | 管理面专用 Bearer token；空 = 回落 `keys.json` 首个 key → `api_key` |
+| `WB2A_ADMIN_TOKEN` | — | 环境变量形式设置 `admin.token`，优先级高于配置文件 |
+
+`admin.enabled = true` 时要求 `api_key` 非空（上游的 fail-fast：管理端点不能裸奔），否则网关启动直接报错退出。
 
 ## 安全与合规
 
@@ -311,7 +402,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 - 仅限**本人授权账号**、本机 / 私有环境测试
 - 不得共享、转售、违规分发，或用于违反目标平台条款的用途
 - 遵守 CodeBuddy 平台服务条款与所在地法律
-- 妥善保管 `auths/`（明文凭证）与网关端口
+- 妥善保管 `auths/`（明文凭证）、`keys.json`（明文调用 key）与网关端口
 
 ## 免责声明
 
@@ -333,7 +424,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 
 ## ☕ Coffee
 
-如果这个项目对你有帮助，欢迎请我喝杯咖啡～
+上游作者（[Sliverkiss](https://github.com/Sliverkiss)）的赞赏渠道：
 
 <table>
   <tr>
@@ -354,6 +445,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 
 本项目采用 [MIT License](LICENSE) 开源协议。
 
+- 原始项目：`https://github.com/Sliverkiss/workbuddy2api`；本仓库为其 fork，由 [@YuleBest](https://github.com/YuleBest) 维护
 - 在遵守 MIT License 前提下，允许使用、复制、修改、合并本项目源代码
 - 再分发（源码或二进制形式）时，须保留原仓库的 MIT 版权声明与许可声明，并在 NOTICE 或 README 中注明原始出处 `https://github.com/Sliverkiss/workbuddy2api`
 - 本项目不授予任何上游（CodeBuddy）接口或服务的权利；使用者仍需自行遵守上游服务条款
