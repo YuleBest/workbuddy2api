@@ -240,6 +240,10 @@ uv run --no-project python wbapi log 50      # 网关日志尾部
 
 > `wbapi` 是 Python 3 脚本，shebang 依赖 `python3`。Windows 上 `python3` 常被 Microsoft Store 的应用执行别名占用（跑起来没有任何输出），用 `uv run --no-project python wbapi ...` 或指向真实解释器。
 
+仓库里上游遗留的 `start-workbuddy2api.cmd` / `status-workbuddy2api.cmd` / `stop-workbuddy2api.cmd`
+找的是 `wb2api.exe`（`data\server.*.log`、`wb2api.pid`），与本 fork 的 `server.exe` + 计划任务不是一套，
+只用其中一个，别混用。
+
 添加账号在 Git Bash 中运行 `login.sh`（它还负责 CN 首次签到以及 Global 注册地区 / trial 流程），或在浏览器里用面板的「账号池」页观察结果。
 
 ### 源码构建
