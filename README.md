@@ -232,13 +232,24 @@ schtasks /Create /TN wbapi-tunnel  /SC ONLOGON /TR "C:\path\to\wb2api-fork\tunne
 这两个 `.cmd` 的内容是本机绝对路径，已被 `.gitignore` 排除，请按自己的目录改写。之后统一用 `wbapi` 操作：
 
 ```bash
-uv run --no-project python wbapi status      # 网关 / 隧道 / 池子状态
-uv run --no-project python wbapi start       # = schtasks /Run /TN wbapi-gateway + tunnel
-uv run --no-project python wbapi restart     # 重启（隧道会闪断几秒）
-uv run --no-project python wbapi log 50      # 网关日志尾部
+wbapi status      # 网关 / 隧道 / 池子状态
+wbapi start       # = schtasks /Run /TN wbapi-gateway + tunnel
+wbapi restart     # 重启（隧道会闪断几秒）
+wbapi log 50      # 网关日志尾部
 ```
 
-> `wbapi` 是 Python 3 脚本，shebang 依赖 `python3`。Windows 上 `python3` 常被 Microsoft Store 的应用执行别名占用（跑起来没有任何输出），用 `uv run --no-project python wbapi ...` 或指向真实解释器。
+> `wbapi` 是 Python 3 脚本，shebang 依赖 `python3`。Windows 上 `python3` 常被 Microsoft Store 的
+> 应用执行别名占用（**执行没有任何输出也不报错**），脚本就没法靠 shebang 直接跑。放一个薄包装到
+> PATH 上，用真实解释器调它即可：
+>
+> ```sh
+> #!/bin/sh
+> # ~/bin/wbapi —— 用真实解释器调用仓库里的 wbapi
+> exec uv run --no-project --python 3.12 python "C:/path/to/wb2api-fork/wbapi" "$@"
+> ```
+>
+> 没有 uv 的话，把 `uv run --no-project --python 3.12 python` 换成任何真实 Python 3 的绝对路径。
+> Linux / macOS 上 `python3` 通常没被劫持，直接 `./wbapi <命令>` 即可。
 
 仓库里上游遗留的 `start-workbuddy2api.cmd` / `status-workbuddy2api.cmd` / `stop-workbuddy2api.cmd`
 找的是 `wb2api.exe`（`data\server.*.log`、`wb2api.pid`），与本 fork 的 `server.exe` + 计划任务不是一套，
