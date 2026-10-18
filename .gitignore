@@ -1,6 +1,8 @@
 # Auth & secrets
 auths/
 data/
+/cloudflared/
+/legacy/
 # 多 key 存储：keys.json 内含明文调用 key，绝不能进版本库（示例结构见 docs/admin.md）
 /keys.json
 *.key
@@ -21,6 +23,7 @@ data/
 /stats
 /activity
 /trial
+/bin
 # Windows 构建产物（server.exe / acct.exe / activity.exe / signin.exe / stats.exe / trial.exe …）
 /*.exe
 # go build 替换正在运行的 .exe 时会留一份 <名字>~ 备份，/*.exe 匹配不到它
@@ -64,3 +67,4 @@ SPEC.md
 !README.md
 !DEVELOPMENT.md
 !docs/*.md
+signin
