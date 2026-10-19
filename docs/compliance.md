@@ -6,7 +6,6 @@
 
 ### 发布来源与合规边界
 
-- **CI 自动打包**：GitHub Actions（`.github/workflows/build.yml`）每日定时 + push tag 触发多架构（amd64/arm64）构建，发布至 `ghcr.io`，同时输出 amd64 离线 `tar.gz` artifact 供 NAS / 离线环境使用；也可本地 `docker compose build` 自构建
 - 登录 / 签到 / 积分工具：`./login.sh` / `./signin.sh` / `./credit.sh`
 - **无产物校验和**：`go.sum` 仅约束 Go 模块依赖；Docker 镜像由本地 `docker compose build` 生成，未引用第三方镜像
 - 上游 CodeBuddy 属第三方商业产品，本项目是其**非官方 OpenAI 兼容网关**；使用其账号做 API 网关涉及目标平台服务条款与账号风险，作者不对账号封禁、条款违约或使用结果负责
@@ -35,25 +34,6 @@
 **6. 修改与分发。** 基于本项目源代码进行的任何修改、衍生均系第三方自发行为，与本项目无关，相应后果由该第三方自行承担。本项目内所有资源文件，禁止任何公众号、自媒体进行任何形式的转载、发布。未经授权，任何组织或个人不得将本项目内容用于转载、发布或再分发。
 
 **7. 条款变更。** 本项目保留随时修改、补充本声明的权利。修改后的声明自发布之日起生效，继续使用本项目即视为接受修订后的声明。本项目所有内容仅供学习和研究使用，请于学习研究完成后及时删除。
-
-## ☕ Coffee
-
-上游作者（[Sliverkiss](https://github.com/Sliverkiss)）的赞赏渠道：
-
-<table>
-  <tr>
-    <td align="center"><b>💰 Solana</b></td>
-    <td><code>AZAKF74rTu7UFVSNRzsKV4HHpTwarax6cG8KAh4fP5rQ</code></td>
-  </tr>
-  <tr>
-    <td align="center"><b>💎 Ethereum</b></td>
-    <td><code>0x1d418627aD6B043900CBE11fe439759bDF2b5170</code></td>
-  </tr>
-  <tr>
-    <td align="center"><b>₿ Bitcoin</b></td>
-    <td><code>bc1q9w7h4j9msyd9q6lhl0398n4s3g8h4vchpqvc2k</code></td>
-  </tr>
-</table>
 
 ## License
 

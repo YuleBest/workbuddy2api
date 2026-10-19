@@ -16,9 +16,9 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 三者都为空时管理接口不鉴权（与网关"`api_key` 留空 = 不鉴权"同一语义，仅限内网使用）。
 
 | 页面 | 能看到什么 | 能做什么 |
-|---|---|---|
+| --- | --- | --- |
 | 总览 | 是否可接活、账号池分布、请求量与首字延迟、定时任务排程 | 立即执行某类定时任务；签到会同步等待并列出每个账号的结果与签到后余额 |
-| 账号池 | 每号积分余量、冷却倒计时与原因、模型级限额台账、连败降权、在途请求、凭证过期时间、按模型的实测成本、域（国内 / 国际） | 停用 / 恢复（手动位）、复活（系统自动禁用位）、清冷却 |
+| 账号池 | 每号积分余量、冷却倒计时与原因、模型级限额台账、连败降权、在途请求、凭证过期时间、按模型的实测成本、域 | 停用 / 恢复（手动位）、复活（系统自动禁用位）、清冷却 |
 | 调用密钥 | 已签发的 key（掩码）、备注、添加日期 | 新建（完整值只显示一次）、吊销 |
 | 请求日志 | 进程内最近 500 条请求：模型、昵称（uid8）、状态码、首字延迟、token、速率 | 按模型 / 账号 / 状态码筛选，只看失败 |
 | 模型 | 上游动态模型表：域前缀、上下文长度、推理档位、倍率 | 搜索、按表头排序、复制模型 ID、展开完整字段 |
@@ -60,15 +60,15 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 仓库根的 `wbapi` 是一个 Python 3 脚本，把日常运维收成一个命令，自动读 `config.json` 拿网关地址与 key：
 
 | 命令 | 作用 |
-|---|---|
+| --- | --- |
 | `wbapi status` | 网关 / 隧道状态 + `/healthz` 探活 + 池子计数（默认动作，别名 `check`） |
 | `wbapi doctor` | 自检：服务入口与二进制、`auths/` 属主与可读性、`keys.json` 权限、管理面前置、运行态；有问题时非零退出 |
 | `wbapi accounts` | 账号池明细：域 / 积分 / 冷却 / 双位停用 / 限额台账 / 实测成本 |
 | `wbapi quota [test [模型]]` | 冷却与限额详情；`test` 用 `max_tokens=16` 实测模型可用性 |
 | `wbapi acct list\|disable <uid> [原因]\|enable <uid>\|revive <uid>` | 账号运维动作（与面板、`acct.sh` 同一批端点） |
-| `wbapi task <checkin\|activity\|travel\|keepalive\|school\|cat> [--wait]` | 手动触发定时任务；签到默认同步等待并打印逐号回执 |
+| `wbapi task <checkin\|activity\|travel\|keepalive\|school\|cat> [--wait]` | 触发定时任务；签到同步等待并打印逐号回执 |
 | `wbapi key list [--show]\|new [备注]\|revoke <前缀>` | 调用密钥的查看 / 新建 / 吊销 |
-| `wbapi models [--realm cn\|global] [--more]` | 模型表格：名 / ID / 域 / 倍率 / 能力 / 上下文 / 输出；`--more` 打完整字段 |
+| `wbapi models [--realm cn\|global] [--more]` | 模型：名 / ID / 域 / 倍率 / 能力 / 上下文 / 输出；`--more` 完整字段 |
 | `wbapi stats [--reset]` | 请求统计（`/v1/stats`；`--reset` 清零累计） |
 | `wbapi panel` | 管理后台地址与登录提示 |
 | `wbapi config` | 生效配置（脱敏） |
@@ -79,10 +79,3 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 环境变量：`WB2A_HOME`（项目根，默认脚本所在目录）、`WB2A_CONFIG`（配置文件，默认 `$WB2A_HOME/config.json`）、`WB2A_GATEWAY`（直接指定网关地址）、`WB2A_PUBLIC_HOST`（公网域名，仅用于状态显示）。
 
 Linux 下服务名固定为 `wbapi-gateway` / `wbapi-tunnel`；Windows 下对应同名计划任务与 `server.exe` / `cloudflared.exe` 进程。
-
-## 第三方面板
-
-内置面板之外，还有符合「面板与网关解耦」理念的社区项目（独立维护，与上游同步）：
-
-- [workbuddy2api-gui](https://github.com/287775856/workbuddy2api-gui) — 账号池状态可视化面板
-- [workbuddy-manager](https://github.com/ithtelab/workbuddy-manager) — 账号管理工具

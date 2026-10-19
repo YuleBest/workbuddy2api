@@ -9,7 +9,7 @@
 ## 关键配置段
 
 | 键 | 说明 |
-|---|---|
+| --- | --- |
 | `listen` | 监听地址，默认 `:7863`；建议本机部署设为 `127.0.0.1:7863` |
 | `api_key` | 调用 key；**留空 = 不鉴权**，公网部署务必设置 |
 | `keys_file` | 多 key 文件路径，默认 `keys.json`；文件缺失 / 为空时回落 `api_key`（见 [管理后台与 CLI](admin.md)） |
@@ -29,7 +29,7 @@
 ## 环境变量
 
 | 变量 | 作用 |
-|---|---|
+| --- | --- |
 | `WB2A_ADMIN_TOKEN` | 设置 `admin.token`，优先级高于配置文件 |
 | `WB2A_HOME` | `wbapi` CLI 的项目根目录（默认脚本所在目录） |
 | `WB2A_CONFIG` | `wbapi` CLI 的配置文件路径（默认 `$WB2A_HOME/config.json`） |

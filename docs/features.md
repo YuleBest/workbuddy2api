@@ -2,8 +2,6 @@
 
 [← 返回 README](../README.md)
 
-📖 上游功能的完整文档见 [GitHub Wiki](https://github.com/Sliverkiss/workbuddy2api/wiki)。
-
 ## 账号池治理
 
 - **OAuth 设备授权登录** — `login.sh` 一条命令完成：取授权 URL → 浏览器登录 → token 轮询 → 凭证落盘 → 重启加载，全程无 PKCE（state 由服务端签发），重复执行即可连续添加多账号
