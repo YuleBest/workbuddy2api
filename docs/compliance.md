@@ -6,7 +6,7 @@
 
 ### 发布来源与合规边界
 
-- 登录 / 签到 / 积分工具：`./login.sh` / `./signin.sh` / `./credit.sh`
+- 登录 / 签到 / 积分工具：`./login.sh` / `./signin.sh` / `./credit.sh`（均为 Go 可执行文件）
 - **无产物校验和**：`go.sum` 仅约束 Go 模块依赖；Docker 镜像由本地 `docker compose build` 生成，未引用第三方镜像
 - 上游 CodeBuddy 属第三方商业产品，本项目是其**非官方 OpenAI 兼容网关**；使用其账号做 API 网关涉及目标平台服务条款与账号风险，作者不对账号封禁、条款违约或使用结果负责
 

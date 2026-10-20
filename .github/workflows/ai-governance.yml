@@ -11,13 +11,13 @@ on:
   issues:
     types: [opened]
   # pull_request_target 让 action（含写操作）以目标仓库而不是 fork 身份运行 ——
-  # 这是 PR 治理改标题/正文/建 canonical 所必需的写权限来源（详见 DESIGN.md §12）。
+  # 这是 PR 治理改标题/正文/建 canonical 所必需的写权限来源。
   pull_request_target:
     types: [opened]
 
 permissions:
-  # claude-identity 换票：用 runner OIDC 向 Anthropic 换 Claude GitHub App 的 installation token，
-  # 让治理的评论/关闭/建 issue 全部以 claude[bot] 署名（见 steps.claude-identity）。
+  # Go action 用 runner OIDC 向 Anthropic 换 Claude GitHub App 的 installation token，
+  # 让治理的评论/关闭/建 issue 全部以 claude[bot] 署名。
   id-token: write
   contents: read
   issues: write
@@ -34,41 +34,14 @@ jobs:
         uses: actions/checkout@v4
 
       # claude[bot] 身份：runner OIDC → Anthropic 换票端点 → installation token。
-      # 端点逆向自 anthropics/claude-code-action src/github/token.ts（MIT）。
+      # Go action 内部完成 OIDC → installation token 交换，失败自动 warning 并回落 github.token。
       # 注意：换票要求 workflow 定义在默认分支上（PR 上改 workflow 会拒），且 repo 已安装 Claude Code App。
-      - name: Exchange OIDC for Claude App token
-        id: claude-identity
-        run: |
-          set -euo pipefail
-          OIDC=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=claude-code-github-action" | jq -r .value)
-          if [ -z "$OIDC" ] || [ "$OIDC" = "null" ]; then
-            echo "::warning::OIDC token unavailable — governance falls back to github-actions[bot]"
-            echo "token=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          APP_TOKEN=$(curl -sf -X POST \
-            -H "Authorization: Bearer $OIDC" \
-            -H "Content-Type: application/json" \
-            -d '{"permissions":{"contents":"write","pull_requests":"write","issues":"write"}}' \
-            https://api.anthropic.com/api/github/github-app-token-exchange \
-            | jq -r '.token // .app_token // empty')
-          echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
-          if [ -n "$APP_TOKEN" ]; then
-            echo "Claude App token obtained — governance will act as claude[bot]"
-          else
-            echo "::warning::token exchange returned no token — falling back to github-actions[bot]"
-          fi
-
       - name: AI governance
         uses: ./.github/actions/ai-governance
         with:
           github-token: ${{ github.token }}
-          # 治理身份令牌：claude-identity 步骤用 runner OIDC 从 Anthropic 换来的
-          # Claude GitHub App installation token —— 治理的评论/关闭/建 issue/打标签
-          # 全部以 claude[bot] 署名。换票失败时回落 github-actions[bot]（action 内部
-          # governanceOctokit || octokit 的空值回落，行为不变）。
-          governance-token: ${{ steps.claude-identity.outputs.token }}
+          # governance-token 留空：action 会用 runner OIDC 换 Claude App token；
+          # 失败时自动 warning 并回落 github.token，治理不中断。
           # AI 缺省走 GitHub Models（免费，靠 models:read）。
           # 若要切换自建/第三方 OpenAI 兼容端点，在仓库 Secrets 里配置以下三项即可，无需改本文件：
           #   AI_BASE_URL / AI_API_KEY / AI_MODEL

@@ -208,12 +208,12 @@ func main() {
 	if !cfg.Schedule.SchoolEnabled {
 		log.Printf("开学季任务已禁用（schedule.school_enabled=false）")
 	} else {
-		log.Printf("开学季任务已启用：%v 点（school_open_day_2026.py ALL --run --yes）", cfg.Schedule.SchoolHours)
+		log.Printf("开学季任务已启用：%v 点（进程内 Go school 任务）", cfg.Schedule.SchoolHours)
 	}
 	if !cfg.Schedule.CatEnabled {
 		log.Printf("夜猫子任务已禁用（schedule.cat_enabled=false）")
 	} else {
-		log.Printf("夜猫子任务已启用：%v 点（task_runner.py ALL --yes --only black_cat）", cfg.Schedule.CatHours)
+		log.Printf("夜猫子任务已启用：%v 点（进程内 Go task_runner 任务）", cfg.Schedule.CatHours)
 	}
 
 	keys := server.NewKeyStore(cfg.KeysFile, cfg.APIKey)
@@ -277,7 +277,7 @@ func main() {
 		root := http.NewServeMux()
 		// 上游的运维端点注册在网关 handler 内部（见 server.AdminRoutePatterns）；这里
 		// 先按同一份表把它们转回数据面，再挂 SPA——否则 /admin/ 前缀会把管理端点整个
-		// 吃掉，acct.sh / cmd/acct 直接 404。列表来自 server 包，上游加端点不会漏转。
+		// 吃掉，cmd/acct / wbapi acct 直接 404。列表来自 server 包，上游加端点不会漏转。
 		for _, pattern := range server.AdminRoutePatterns() {
 			root.Handle(pattern, h)
 		}

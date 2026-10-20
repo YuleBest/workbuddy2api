@@ -37,7 +37,7 @@ type Config struct {
 
 	// Admin 运维管理端点 + Web 管理后台开关（issue #138/#118）。默认**关闭**：管理能力
 	// 默认不暴露，避免「开了网关就等于开了账号管理面」。开启后可用：
-	//   - /admin/accounts/{uid}/{disable,enable,revive}（JSON 端点，acct.sh / cmd/acct 走这里）
+	//   - /admin/accounts/{uid}/{disable,enable,revive}（JSON 端点，cmd/acct / wbapi acct 走这里）
 	//   - /admin/ 与 /api/admin/*（Web 后台：观测 + 同一批运维动作）
 	// 鉴权与 /status 同源（withAuth + 同一个 api_key，不另立管理密钥）。
 	Admin struct {

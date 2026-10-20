@@ -9,8 +9,9 @@
 
 - 内置管理面板
 - 多 key 存储
-- `wbapi` CLI
+- 纯 Go `wbapi` CLI、登录与任务工具
 - Windows 计划任务部署
+- 无 Python、Shell、Batch 运行时依赖
 - 更多...
 
 配置键与端点都是增量的，可直接替换上游二进制

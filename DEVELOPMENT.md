@@ -38,20 +38,23 @@ internal/prompt     内置提示词
 internal/logfmt     日志行格式化
 internal/redisstore 池状态 Redis 镜像
 web                 Vue 3 + Vite + TS 管理面板源码
-wbapi               运维 CLI（Python 3，仓库根）
+cmd/wbapi           运维 CLI（Go）
+cmd/build           全量构建与旧命令名兼容产物生成器（Go）
+internal/tasks      growth / 开学季 / 夜猫子任务系统（Go）
+internal/aigovernance GitHub AI 治理 Action（Go）
 ```
 
 ## 环境要求
 
 - Go ≥ 1.22（`go.mod` 声明 1.22.5）
 - Node ≥ 20 + pnpm ≥ 9（只改后端时不需要）
-- Python 3（跑 `wbapi` 时才需要）
 - 一个已注册的 CodeBuddy 账号（跑真实请求时才需要）
 
 ## 常用命令
 
 ```bash
 # 后端
+go run ./cmd/build        # 构建全部二进制到 dist/，含旧 Unix 命令名兼容产物
 go build ./...
 go vet ./...
 go test ./...            # 完整测试套件
@@ -85,7 +88,7 @@ web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed─�
 
 | 入口 | 路径 | 客户端 |
 |---|---|---|
-| 上游运维端点 | `POST /admin/accounts/{uid}/{disable,enable,revive}` | `acct.sh` / `cmd/acct` / `wbapi acct` |
+| 上游运维端点 | `POST /admin/accounts/{uid}/{disable,enable,revive}` | `acct` / `cmd/acct` / `wbapi acct` |
 | Web 后台 API | `GET/POST /api/admin/*` | 浏览器面板（`web/`） |
 
 - 两边都走 `pool` 的同一批方法：`SetManualDisabled`（手动停用位）/ `ReviveDisabled`（系统自动禁用位）/
@@ -94,7 +97,7 @@ web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed─�
   仍被系统禁用的号需要 `revive` 才回选号池。
 - 上游端点的模式表在 `internal/server/handler.go` 的 `adminRoutes`，经 `server.AdminRoutePatterns()`
   暴露给 `cmd/server`：后台前端挂在 `/admin/` 前缀下，必须先把这些模式转回数据面，
-  否则会被 SPA 吃掉（`acct.sh` 会 404）。**上游新增管理端点时同步这张表即可，不用改 main.go。**
+  否则会被 SPA 吃掉（`acct` 会 404）。**上游新增管理端点时同步这张表即可，不用改 main.go。**
 - 开关是同一个 `config.admin.enabled`（默认 false），且要求 `api_key` 非空（fail-fast）。
 
 ## 管理 API 约定
@@ -156,13 +159,11 @@ web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed─�
 
 本 fork 的目标部署形态之一是 Windows 计划任务（另一套是 Docker / systemd）：
 
-- 二进制为仓库根的 `server.exe`，由计划任务 `wbapi-gateway` 拉起；隧道是 `wbapi-tunnel` + `cloudflared.exe`。
-- `gateway-task.cmd` / `tunnel-task.cmd` 是这两个任务的入口脚本，内容含**本机绝对路径**，已被
-  `.gitignore` 排除，不进版本库（换机器要自己写一份）。
-- `wbapi` 通过 `os.name == "nt"` 判断平台：服务命令改走 `schtasks` / `taskkill`，探活改成
-  `/healthz` + `tasklist`，日志改读 `gateway.log` / `gateway.err.log`，`doctor` 跳过 uid 属主检查。
-- Windows 上 `python3` 常被 Microsoft Store 的应用执行别名占用（执行无任何输出），
-  跑 `wbapi` 用 `uv run --no-project python wbapi ...` 或指向真实解释器。
+- 二进制为仓库根的 `server.exe` / `wbapi.exe`，由计划任务 `wbapi-gateway` / `wbapi-tunnel` 拉起。
+- 计划任务直接执行 Go 二进制，不再使用 `.cmd`：网关执行 `server.exe -config config.json`，
+  隧道执行 `cloudflared.exe` 及本机隧道参数。
+- `wbapi` 通过运行平台判断：服务命令走 `schtasks` / `taskkill`，探活走 `/healthz`，
+  日志读取 `gateway.log` / `gateway.err.log`，`doctor` 跳过 uid 属主检查。
 
 ## 测试
 
@@ -180,6 +181,7 @@ web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed─�
 gofmt -l $(git ls-files '*.go')   # 见下方说明：只看你改动的文件
 go vet ./...
 go test ./...
+go run ./cmd/build        # 开发构建产物统一落在 dist/
 cd web && pnpm build              # 含类型检查
 ```
 

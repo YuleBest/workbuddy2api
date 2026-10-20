@@ -25,7 +25,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 | 模型对话 | 选模型直接开聊，流式逐字输出，助手回复按 markdown 渲染（代码块 / 列表 / 表格） | 发送 / 停止；对话走后端数据面，会进请求日志与统计 |
 | 设置 | 生效配置（密钥类只显示"是否已配置"）、运行信息 | 调整页面刷新间隔与主题、退出登录 |
 
-**前置条件**：`config.json` 里 `"admin": {"enabled": true}`（默认关闭，与 `cmd/acct` / `acct.sh` 同一开关）。
+**前置条件**：`config.json` 里 `"admin": {"enabled": true}`（默认关闭，与 `cmd/acct` / `wbapi acct` 同一开关）。
 面板的动作与上游 `/admin/accounts/{uid}/{disable,enable,revive}` 端点同语义、同状态位——
 `disable/enable` 管手动停用位，`revive` 管系统自动禁用位，两者独立。
 
@@ -35,7 +35,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 池子满时可能收到 503——这是真实链路语义，不是面板缺陷。
 
 **关掉面板**：`config.json` 里设 `"admin": {"enabled": false}`，`/admin`、`/api/admin/*` 与
-`/admin/accounts/*` 端点都不再注册（`acct.sh` 同样不可用）。
+`/admin/accounts/*` 端点都不再注册（`acct` / `wbapi acct` 同样不可用）。
 
 ## 调用密钥（多 key）
 
@@ -57,7 +57,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 
 ## 运维 CLI（wbapi）
 
-仓库根的 `wbapi` 是一个 Python 3 脚本，把日常运维收成一个命令，自动读 `config.json` 拿网关地址与 key：
+`wbapi` 是 Go 二进制，把日常运维收成一个命令，自动读 `config.json` 拿网关地址与 key：
 
 | 命令 | 作用 |
 | --- | --- |
@@ -65,7 +65,7 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 | `wbapi doctor` | 自检：服务入口与二进制、`auths/` 属主与可读性、`keys.json` 权限、管理面前置、运行态；有问题时非零退出 |
 | `wbapi accounts` | 账号池明细：域 / 积分 / 冷却 / 双位停用 / 限额台账 / 实测成本 |
 | `wbapi quota [test [模型]]` | 冷却与限额详情；`test` 用 `max_tokens=16` 实测模型可用性 |
-| `wbapi acct list\|disable <uid> [原因]\|enable <uid>\|revive <uid>` | 账号运维动作（与面板、`acct.sh` 同一批端点） |
+| `wbapi acct list\|disable <uid> [原因]\|enable <uid>\|revive <uid>` | 账号运维动作（与面板、`acct` 同一批端点） |
 | `wbapi task <checkin\|activity\|travel\|keepalive\|school\|cat> [--wait]` | 触发定时任务；签到同步等待并打印逐号回执 |
 | `wbapi key list [--show]\|new [备注]\|revoke <前缀>` | 调用密钥的查看 / 新建 / 吊销 |
 | `wbapi models [--realm cn\|global] [--more]` | 模型：名 / ID / 域 / 倍率 / 能力 / 上下文 / 输出；`--more` 完整字段 |

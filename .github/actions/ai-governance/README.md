@@ -1,10 +1,10 @@
 # AI Issue Governance
 
-GitHub Action：把 NoMore Spam 改造成面向本仓库（workbuddy2api）的 **AI Issue 治理** action——
+Go GitHub Action：把 NoMore Spam 改造成面向本仓库（workbuddy2api）的 **AI Issue / PR 治理** action——
 在保留上游「垃圾检测 / README 覆盖 / 内容分级」能力的基础上，新增**要点提炼 + canonical 归并 + 规范化重开**。
 
 > 上游：<https://github.com/JohnsonRan/nomore-spam>（MIT，本目录 `LICENSE` 保留其版权声明）。
-> 本目录代码为本地 composite action（`uses: ./.github/actions/ai-governance`），不是发布到 Marketplace 的第三方 action。
+> 本目录是本地 composite action（`uses: ./.github/actions/ai-governance`），实现位于仓库的 `cmd/ai-governance` 与 `internal/aigovernance`，不使用 Node/npm。
 
 ## 它解决什么问题
 
@@ -37,9 +37,9 @@ GitHub Action：把 NoMore Spam 改造成面向本仓库（workbuddy2api）的 *
      issue / 评审评论草稿失败 / 检索故障 → 一律回落旧的 canonical 关联链路，绝不误关。
    - 配置项：`pr-review-close`（开关，默认 `false`——会关 PR 的新能力必须显式开启）、`max-related-issues`、
      `related-comments-per-issue`、`related-body-truncate`。
-7. **治理身份（`governance-token`）**：无需配置任何 PAT。workflow 里的 `claude-identity` 换票步骤用 runner
-   的 OIDC token（`id-token: write`）向 Anthropic 换来 Claude GitHub App 的 installation token，传入本输入后，
-   所有治理写操作（评论/关闭/打标/建 issue）以 **claude[bot]** 身份发布。换票失败时回落 `github.token`
+7. **治理身份（`governance-token`）**：无需配置任何 PAT。Go action 使用 runner 的 OIDC token
+   （`id-token: write`）向 Anthropic 换来 Claude GitHub App 的 installation token；成功后所有治理写操作
+   （评论/关闭/打标/建 issue）以 **claude[bot]** 身份发布。换票失败会输出 warning 并回落 `github.token`
    （github-actions[bot]），治理不中断。
 8. **统一历史语境层（F1）**：`historyContextService` 是「取回并组织仓库历史 issue 与 PR 作为参考经验」的唯一入口：
    - `buildIndex`：紧凑索引（每条一行，编号/类型/标题/标签/状态/关闭理由，上限 `max-history-index` 默认 100），
@@ -68,7 +68,7 @@ GitHub Action：把 NoMore Spam 改造成面向本仓库（workbuddy2api）的 *
     （与治理层标题改写同口径），去掉此前这一次 AI 调用——每个 PR 省 1 次 AI 调用；AI 只保留给
     「起草新标题」。
 
-> **R12 成本决策（2026-09）**：`analyze-file-changes` 三处默认值（action.yml / config.json / workflow）
+> **R12 成本决策（2026-09）**：`analyze-file-changes` 三处默认值（action.yml / 嵌入 config / workflow）
 > 统一为 `true`。diff 是垃圾/质量检测与历史语境评审的核心证据（MALICIOUS/TRIVIAL 对标题+正文的判读
 > 近乎盲猜），成本可接受。若后续成本敏感，可只在 `pr-review-close: true` 时启用。
 
@@ -99,7 +99,7 @@ on:
   issues:
     types: [opened]
   # PR 治理：pull_request_target 让 action 以目标仓库身份运行，获得改写 PR 标题/正文的写权限
-  # （安全设计见 DESIGN.md §12：本地 action、不 checkout fork 分支、token 不外泄）
+  # （本地 action、不 checkout fork 分支、token 不外泄）
   pull_request_target:
     types: [opened]
 
@@ -116,22 +116,10 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      # claude[bot] 身份：runner OIDC → Anthropic 换票（无需任何 PAT/secret）
-      - name: Exchange OIDC for Claude App token
-        id: claude-identity
-        run: |
-          OIDC=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=claude-code-github-action" | jq -r .value)
-          APP_TOKEN=$(curl -sf -X POST \
-            -H "Authorization: Bearer $OIDC" \
-            https://api.anthropic.com/api/github/github-app-token-exchange \
-            | jq -r '.token // .app_token // empty')
-          echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/ai-governance
         with:
           github-token: ${{ github.token }}
-          # 治理身份：换票输出，写操作以 claude[bot] 署名；换票失败自动回落 github-actions[bot]
-          governance-token: ${{ steps.claude-identity.outputs.token }}
+          # 留空时 action 内部用 OIDC 换取 Claude App token；失败自动 warning 并回落 github.token
           ai-base-url: ${{ secrets.AI_BASE_URL }}
           ai-api-key: ${{ secrets.AI_API_KEY }}
           ai-model: ${{ secrets.AI_MODEL }}
@@ -148,7 +136,7 @@ jobs:
 | input | 默认 | 说明 |
 |-------|------|------|
 | `github-token` | `${{ github.token }}` | issues:write 足够；PR 治理改写标题/正文需 pull-requests:write；走 GitHub Models 还需 models:read |
-| `governance-token` | 空 | 治理身份令牌：传 `claude-identity` 换票步骤的输出，治理写操作以 claude[bot] 署名；空值回落 github-actions[bot] |
+| `governance-token` | 空 | 可选的治理身份令牌；空值时 action 内部用 OIDC 换票，失败后回落 github-actions[bot] |
 | `pr-review-close` | `false` | PR 历史语境评审开关（详见上文第 6 点；关闭时走旧 canonical 关联链路） |
 | `max-related-issues` | `3` | 历史语境评审纳入的相关 issue 数量上限 |
 | `related-comments-per-issue` | `10` | 每条相关 issue 读取的评论数量上限 |
@@ -175,7 +163,7 @@ jobs:
 ### 3. Secrets
 
 - `AI_MODEL` / `AI_BASE_URL` / `AI_API_KEY`：可选，自定义 AI 端点。**缺省三者都可以不配**——action 回落到 GitHub Models（用 `github.token` 做鉴权，靠 workflow 的 `models: read` 权限）。
-- **治理身份无需任何 secret**：claude[bot] 署名靠 runner OIDC 向 Anthropic 换票实现（见上文第 7 点），不依赖 PAT。
+- **治理身份无需任何 secret**：claude[bot] 署名靠 Go action 使用 runner OIDC 向 Anthropic 换票实现（见上文第 7 点），不依赖 PAT。
   换票要求：workflow 的 `permissions` 含 `id-token: write`、repo 已安装 Claude Code GitHub App、
   workflow 定义在默认分支上。任一不满足时自动回落 github-actions[bot]，治理不中断。
 - 标签 `canonical` 与 `duplicate` 需在仓库 `Settings > Labels` 里预先建好（`canonical` 不存在时归并匹配退化：找不到索引 → 视为新主题，不会报错）。 标签 `history-rejected` 同理（评审关闭的 PR 打标用；不存在时打标失败仅留痕，不阻断关闭）。
@@ -207,31 +195,26 @@ flowchart TD
 ## 开发
 
 ```bash
-cd .github/actions/ai-governance
-npm ci
-npm test          # jest，治理服务 mock github + ai
-npm run lint      # eslint
+go test ./internal/aigovernance/... ./cmd/ai-governance/...
+go vet ./internal/aigovernance/... ./cmd/ai-governance/...
+go build ./cmd/ai-governance
 ```
 
-代码在 `src/` 下，issue 治理逻辑在 `src/services/issueGovernanceService.js` 与 `src/handlers/issueHandler.js`；
-PR 治理逻辑在 `src/services/prGovernanceService.js` 与 `src/handlers/prHandler.js`（复用 issue 治理的提炼/匹配/起草，不复制粘贴）；
-PR 历史语境评审在 `src/services/prReviewService.js`（取数 → 语境包 → AI 判定 → 证据校验 → 评论/关闭）；
-上游复用模块（`ai.js`、`github.js`、`issueAnalyzer.js`、`templateDetector.js`、`classificationService.js`、`issueWorkflowService.js` 等）保持不变。
+Go 入口只负责环境、事件和 OIDC 接线。GitHub/AI 都通过 `net/http` 与可注入接口工作，测试使用本地 fake event、
+`httptest.Server` 和 fake GitHub，不访问真实 GitHub 或 AI。提示词与 locale 由 `go:embed` 编入二进制。
 
 ## 目录结构
 
 ```
 .github/actions/ai-governance/
-├── action.yml                 # composite action 定义（inputs 含治理参数）
-├── DESIGN.md                  # 设计文档（选型论证 / AI 链路 / 降级 / 安全阀）
+├── action.yml                 # composite action：setup-go → build → run
 ├── README.md                  # 本文档
-├── config.json                # prompts / responses / logging / defaults（上游 + 治理扩展）
-├── LICENSE                    # MIT（保留上游版权）
-├── locales/{en,zh-CN}.json    # 评论模板（zh-CN 扩展治理评论）
-├── src/
-│   ├── index.js               # 入口 + 参数接线（含 governance-token 双客户端，OIDC 换票接入点）
-│   ├── handlers/              # issueHandler / prHandler（治理接线）/ issueProcessor
-│   ├── services/              # issueGovernanceService + prGovernanceService + prReviewService（新增）+ 上游复用模块
-│   └── utils/                 # config / constants / helpers / errors
-└── tests/                     # jest（含 governanceService / prGovernanceService / prReviewService / prHandler 测试）
+└── LICENSE                    # MIT（保留上游版权）
+
+cmd/ai-governance/              # 薄 Go 入口
+internal/aigovernance/          # 实现与测试
+├── assets/config.default.json # prompts / logging / defaults
+├── assets/locales/            # en / zh-CN 评论模板
+├── *_test.go                  # 表驱动、httptest、fake event 测试
+└── *.go                       # GitHub/AI/OIDC/治理/评审实现
 ```

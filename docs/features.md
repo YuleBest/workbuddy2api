@@ -4,7 +4,7 @@
 
 ## 账号池治理
 
-- **OAuth 设备授权登录** — `login.sh` 一条命令完成：取授权 URL → 浏览器登录 → token 轮询 → 凭证落盘 → 重启加载，全程无 PKCE（state 由服务端签发），重复执行即可连续添加多账号
+- **OAuth 设备授权登录** — `login.sh` Go 命令完成：取授权 URL → 浏览器登录 → token 轮询 → 凭证落盘 → 重启加载，全程无 PKCE（state 由服务端签发），重复执行即可连续添加多账号
 - **三因子加权随机选号** — `credits 比例 ×10 + 快过期积分占比 ×8 + 闲置补偿` 三项加权（`pool.expiring_soon` 窗口内的积分优先消耗，默认 7 天），按权重降序取 **Top-5 候选短名单**，再在短名单内加权抽签（等权重候选先随机打乱防惊群、LRU 兜底覆盖全部候选），兼顾积分多、快过期积分先用掉、闲置久的账号；失败账号由熔断 / 冷却 / 连败降权状态机处置（不进权重公式）
 - **防惊群** — 跳过 100ms 内刚被选中的账号，多账号同时待命时不打爆同一台
 - **在途租约** — 单账号最大在途请求数（`pool.max_in_flight`）限制并发占用，占满的号不参与选号，避免单号过载
@@ -55,16 +55,16 @@
 
 - 同时适配**国内版（CN，`copilot.tencent.com` / `www.codebuddy.cn`）与国际版（Global，`www.workbuddy.ai`）**账号
 - 共享同一账号池，由账号 `realm` 或请求模型名前缀（`cn:` / `global:`）决定路由；`global.enabled` 可一键锁死纯 CN 部署
-- 国际版支持注册激活、地区完善、一次性 trial 加油包领取（`./trial.sh`）
+- 国际版支持注册激活、地区完善、一次性 trial 加油包领取（`./trial` 或兼容的 `./trial.sh`）
 
 ## 辅助工具
 
 - **Web 管理后台** — 内置面板，浏览器里看账号池、密钥、请求日志、模型与生效配置，做停用 / 恢复 / 复活 / 清冷却、密钥增删、任务手动触发，还能直接在面板里试模型（见 [管理后台与 CLI](admin.md)）
 - **`wbapi` 运维 CLI** — 一个脚本覆盖状态 / 自检 / 账号 / 配额 / 密钥 / 模型 / 任务 / 日志 / 服务启停（见 [管理后台与 CLI](admin.md)）
-- 积分日报：`./credit.sh`（美化 / `-json`，realm 感知双域）
-- 手动签到：`./signin.sh`（批量、幂等不重复计）
-- 账号停用 / 恢复：`./acct.sh list | disable <uid> [原因] | enable <uid> | revive <uid>`（需 `admin.enabled`，走网关管理端点）
-- 领养联动 / 任务查询：`scripts/task_runner.py`（成长任务一体机，默认 dry-run）
+- 积分日报：`./credit.sh`（Go 兼容入口；美化 / `-json`，realm 感知双域）
+- 手动签到：`./signin.sh`（Go 兼容入口；批量、幂等不重复计）
+- 账号停用 / 恢复：`./acct list | disable <uid> [原因] | enable <uid> | revive <uid>`（需 `admin.enabled`，走网关管理端点）
+- 领养联动 / 任务查询：`./task_runner`（Go 成长任务一体机，默认 dry-run）
 - 个性化提示词：`prompt.file` 指向自定义提示词文件即整体替换内置默认（`custom`/`append` 模式生效）
 
 ## 架构总览
@@ -73,7 +73,7 @@
 flowchart LR
     Client["客户端 / SDK\nOpenAI 兼容请求"] --> H
     Panel["Web 管理后台\n/admin/ (Vue 3 SPA)"] --> A
-    CLI["wbapi CLI / acct.sh"] --> A
+    CLI["wbapi CLI / acct"] --> A
 
     subgraph GWI["WorkBuddy2API 网关 :7863"]
         H["数据面 Handler\n鉴权 · 提示词改写 · 轮转"] --> P

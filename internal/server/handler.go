@@ -71,7 +71,7 @@ const wafCooldownBase = 60 * time.Second
 
 // adminRoute 运维管理端点：模式 + 处理函数。注册与对外暴露共用同一份表，
 // 宿主（cmd/server）把 /admin/ 前缀交给 Web 后台前端时，必须按 AdminRoutePatterns()
-// 把这些端点先转回数据面，否则会被 SPA 的前缀匹配吃掉（acct.sh / cmd/acct 会 404）。
+// 把这些端点先转回数据面，否则会被 SPA 的前缀匹配吃掉（cmd/acct / wbapi acct 会 404）。
 type adminRoute struct {
 	pattern string
 	handle  func(*Handler, http.ResponseWriter, *http.Request)

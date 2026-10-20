@@ -11,7 +11,7 @@ inputs:
     required: true
     default: '${{ github.token }}'
   governance-token:
-    description: '治理身份令牌：传入 claude-identity 换票步骤的输出（runner OIDC 向 Anthropic 换来的 Claude App installation token），治理写操作以 claude[bot] 署名；缺省回落 github-token（github-actions[bot]）'
+    description: '可选治理身份令牌；空值时 Go action 使用 runner OIDC 换取 Claude App token，失败回落 github-token（github-actions[bot]）'
     required: false
     default: ''
   ai-model:
@@ -121,22 +121,21 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - name: Setup Go
+      uses: actions/setup-go@v5
       with:
-        node-version: '24'
+        go-version-file: go.mod
+        cache: false
 
-    - name: Install dependencies
+    - name: Build AI governance
       shell: bash
-      run: |
-        cd ${{ github.action_path }}
-        npm ci --production
+      working-directory: ${{ github.workspace }}
+      run: go build -o "$RUNNER_TEMP/ai-governance" ./cmd/ai-governance
 
     - name: Run AI Issue Governance
       shell: bash
-      run: |
-        cd ${{ github.action_path }}
-        node src/index.js
+      working-directory: ${{ github.workspace }}
+      run: exec "$RUNNER_TEMP/ai-governance"
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_GOVERNANCE_TOKEN: ${{ inputs.governance-token }}
