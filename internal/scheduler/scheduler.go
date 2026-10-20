@@ -101,7 +101,7 @@ func New(cfg Config) *Scheduler {
 }
 
 // checkinRefreshSkew 签到前判定"token 是否临近过期"的时间窗口（10 分钟）。
-// 长时间停机/容器长期停跑后 access token 往往已过期，不先刷新则签到必然 401 白跑。
+// 长时间停机/进程长期停跑后 access token 往往已过期，不先刷新则签到必然 401 白跑。
 const checkinRefreshSkew = 10 * time.Minute
 
 // CheckinStatus 单账号签到结果状态。
@@ -335,7 +335,7 @@ func (s *Scheduler) CheckinAll() ([]CheckinOutcome, error) {
 			out = append(out, oc)
 			continue
 		}
-		// 停机跨过 token 有效期（关机过夜/容器长期停跑）时先补一次刷新，否则签到必然 401 白跑。
+		// 停机跨过 token 有效期（关机过夜/进程长期停跑）时先补一次刷新，否则签到必然 401 白跑。
 		if a.NeedsRefresh(checkinRefreshSkew) {
 			if err := s.cfg.Upstream.RefreshToken(a); err != nil {
 				log.Printf("checkin %s refresh: %v", logfmt.Label(st.UID, st.Nickname), err)

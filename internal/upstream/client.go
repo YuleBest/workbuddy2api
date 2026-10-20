@@ -247,7 +247,7 @@ func isPromptTooLongStatus(status int) bool {
 }
 
 // softRateResetLoc 上游 429 6004 文案中的重置时间固定按 UTC+8 解释（上游文案如此，
-// 与容器时区无关）。
+// 与运行环境时区无关）。
 var softRateResetLoc = time.FixedZone("UTC+8", 8*60*60)
 
 // SoftRateResetLoc 暴露重置时间的固定时区（供测试构造/断言同一时区口径）。
@@ -675,8 +675,8 @@ type Client struct {
 
 	// DeviceToken 设备风控 Token（X-Device-Token 头）兜底来源：config upstream.device_token。
 	// 仅当 auth.Auth.DeviceToken 为空时才取此值；两者皆空则不注入该头。
-	// 容器内无桌面端 Turing SDK，这是把外部（宿主/桌面端）生成的 token 注入的入口。
-	// 另见 DeviceTokenFile 缓存读取：宿主可把 token 落 /app/data/device_token 共用。
+	// 无桌面端 Turing SDK 时，这是把外部（宿主/桌面端）生成的 token 注入的入口。
+	// 另见 DeviceTokenFile 缓存读取：宿主可把 token 写入本机文件共用。
 	DeviceToken string
 
 	// DeviceTokenFile 宿主落盘的 device token 文件路径（可选，空 = 不读文件）。

@@ -133,11 +133,8 @@ func PrepareAuthDir(dir string) error {
 
 // PermissionAdvice returns deployment-specific repair instructions.
 func PermissionAdvice(path string, expectedUID int, lookupName func(int) (string, error)) []string {
-	if expectedUID == 10001 {
-		return []string{
-			fmt.Sprintf("    请执行：chown -R %d:%d %s", expectedUID, expectedUID, path),
-			"    或在容器内登录（属主自动正确）：docker compose exec -it wb2api ./login",
-		}
+	if expectedUID < 0 {
+		return []string{"    请检查当前用户对该目录的读写权限"}
 	}
 	name := fmt.Sprintf("%d", expectedUID)
 	if lookupName != nil {

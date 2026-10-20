@@ -94,16 +94,13 @@ func baseRunner(t *testing.T, server *fakeLoginServer, realm string) *Runner {
 		Realm:          realm,
 		RealmExplicit:  true,
 		AuthDir:        filepath.Join(t.TempDir(), "auths"),
-		ConfigPath:     filepath.Join(t.TempDir(), "config.json"),
 		OAuthStatePath: filepath.Join(t.TempDir(), "state.json"),
-		StatusURL:      "http://127.0.0.1:1/status",
 		OAuthBaseURL:   server.URL,
 		OAuthOrigin:    server.URL,
 		CNBaseURL:      server.URL,
 		GlobalBaseURL:  server.URL,
 		HTTPClient:     server.Client(),
 		LookPath:       func(string) (string, error) { return "", errors.New("not found") },
-		Sleep:          func(time.Duration) {},
 		Now:            func() time.Time { return time.Unix(1_700_000_000, 0) },
 		Getenv:         func(string) string { return "123" },
 		LookupUID:      func(string) (int, error) { return 0, errors.New("not found") },
@@ -235,15 +232,15 @@ func TestExpectedOwnerPriority(t *testing.T) {
 			t.Errorf("uid=%d want 456", got)
 		}
 	})
-	t.Run("container fallback", func(t *testing.T) {
+	t.Run("current user fallback", func(t *testing.T) {
 		runner := &Runner{
 			Getenv: func(string) string { return "" },
 			RunCommand: func(context.Context, string, []string, io.Reader) (CommandOutput, error) {
 				return CommandOutput{}, errors.New("systemctl missing")
 			},
 		}
-		if got := runner.expectedOwnerUID(context.Background()); got != 10001 {
-			t.Errorf("uid=%d want 10001", got)
+		if got := runner.expectedOwnerUID(context.Background()); got != os.Getuid() {
+			t.Errorf("uid=%d want %d", got, os.Getuid())
 		}
 	})
 }
@@ -342,60 +339,6 @@ func TestGlobalFailureDoesNotRollbackSavedCredentials(t *testing.T) {
 	}
 }
 
-func TestDockerRestartUsesConfigKeyAndReportsAccountCount(t *testing.T) {
-	fake := newFakeLoginServer(t)
-	var statusAuth string
-	statusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		statusAuth = r.Header.Get("Authorization")
-		_, _ = w.Write([]byte(`{"accounts":[{"uid":"u1"},{"uid":"u2"}]}`))
-	}))
-	defer statusServer.Close()
-
-	runner := baseRunner(t, fake, RealmCN)
-	runner.StatusURL = statusServer.URL
-	if err := os.WriteFile(runner.ConfigPath, []byte(`{"api_key":"config-key"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var mu sync.Mutex
-	var calls []string
-	runner.RunCommand = func(_ context.Context, name string, args []string, _ io.Reader) (CommandOutput, error) {
-		mu.Lock()
-		calls = append(calls, name+" "+strings.Join(args, " "))
-		mu.Unlock()
-		switch {
-		case name == "docker" && len(args) == 3 && args[0] == "ps":
-			return CommandOutput{Stdout: []byte("other\nworkbuddy2api\n")}, nil
-		case name == "docker" && len(args) == 2 && args[0] == "restart":
-			return CommandOutput{}, nil
-		case name == "systemctl":
-			return CommandOutput{}, nil
-		default:
-			return CommandOutput{}, errors.New("unexpected command")
-		}
-	}
-	var slept time.Duration
-	runner.Sleep = func(d time.Duration) { slept = d }
-	if code := runner.Run(context.Background()); code != 0 {
-		t.Fatalf("exit=%d stderr=%s", code, runner.Err.(*strings.Builder).String())
-	}
-	if statusAuth != "Bearer config-key" {
-		t.Errorf("status Authorization=%q", statusAuth)
-	}
-	if slept != 2*time.Second {
-		t.Errorf("sleep=%v want 2s", slept)
-	}
-	mu.Lock()
-	joinedCalls := strings.Join(calls, "\n")
-	mu.Unlock()
-	if !strings.Contains(joinedCalls, "docker ps --format {{.Names}}") ||
-		!strings.Contains(joinedCalls, "docker restart workbuddy2api") {
-		t.Errorf("docker calls:\n%s", joinedCalls)
-	}
-	if !strings.Contains(runner.Out.(*strings.Builder).String(), "当前账号数: 2") {
-		t.Errorf("output=%s", runner.Out.(*strings.Builder).String())
-	}
-}
-
 func TestRunInteractiveRealmSelection(t *testing.T) {
 	fake := newFakeLoginServer(t)
 	runner := baseRunner(t, fake, RealmCN)
@@ -422,12 +365,7 @@ func TestMarshalAuthFileRejectsMissingIdentity(t *testing.T) {
 	}
 }
 
-func TestPermissionAdviceContainerAndHost(t *testing.T) {
-	container := strings.Join(PermissionAdvice("auths", 10001, nil), "\n")
-	if !strings.Contains(container, "chown -R 10001:10001 auths") ||
-		!strings.Contains(container, "docker compose exec") {
-		t.Errorf("container advice=%s", container)
-	}
+func TestPermissionAdviceHost(t *testing.T) {
 	host := strings.Join(PermissionAdvice("auths", 123, func(int) (string, error) {
 		return "alice", nil
 	}), "\n")

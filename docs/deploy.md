@@ -2,57 +2,6 @@
 
 [← 返回 README](../README.md)
 
-## Docker Compose 一键部署
-
-- Docker + Docker Compose
-
-```bash
-git clone https://github.com/YuleBest/workbuddy2api.git
-cd workbuddy2api
-cp config.example.json config.json
-```
-
-然后编辑 `config.json`，至少设置 `api_key`（留空不鉴权）
-
-```bash
-# 登录添加账号（重复执行可加多号）
-# 注意：执行过下方说明中的 chown 后，host 侧 login.sh 会被可写性预检拦截，此时请在容器内登录，见下方说明）
-./login.sh
-
-# 启动服务
-docker compose up -d --build
-
-# 健康检查
-# 无可用账号时 503，service 字段用于确认打到的是本网关
-curl -s http://localhost:7863/healthz
-# {"healthy":2,"total":3,"service":"workbuddy2api"}
-```
-
-`login.sh` 现在是 Go 可执行文件，内置授权 URL 获取 + 浏览器登录 + token 轮询 + 首次签到 +
-凭据落盘 + 容器重启，全程无 PKCE，也不再需要 Python 或 Bash。
-
-<details>
-<summary>非 root 宿主用户注意</summary>
-
-`./login.sh` 以**当前宿主用户**落盘凭证，容器内网关却以 uid 10001 读 + 回写。
-两者 uid 不同时容器读不到凭证文件，`/status` 账号数为 0。
-
-登录后、启动前，由 root 或部署用户把目录属主交给 10001：
-
-```bash
-chown -R 10001:10001 ./auths
-```
-
-之后新增账号**必须**进**容器内**登录（`app` 自己落盘，属主即 10001，不用反复 chown）：
-
-```bash
-docker compose exec -it wb2api ./login.sh && docker compose restart wb2api
-```
-
-chown 之后 host 侧 `./login.sh` 已无写权限，脚本会在拉起浏览器授权前退出并提示，不会白走一遍 OAuth；容器内没有 docker CLI，登录完回宿主机重启。
-
-</details>
-
 ## Windows 原生部署（计划任务）
 
 - Windows 10/11
@@ -85,9 +34,9 @@ wbapi restart     # 重启（隧道会闪断几秒）
 wbapi log 50      # 网关日志尾部
 ```
 
-`wbapi.exe`、`login.sh` 等全部由 Go 构建器生成，不依赖 Python。添加账号运行
-`.\login.sh --realm=cn` 或 `.\login.sh --realm=global`；它同时负责 CN 首次签到和
-Global 注册地区 / trial 流程。
+`wbapi.exe`、`login.exe` 等全部由 Go 构建器生成，不依赖 Python。添加账号运行
+`.\login.exe --realm=cn` 或 `.\login.exe --realm=global`；它同时负责 CN 首次签到和
+Global 注册地区 / trial 流程。凭证写入 `auths/` 后网关会自动热加载，不需要重启。
 
 ## 源码构建
 

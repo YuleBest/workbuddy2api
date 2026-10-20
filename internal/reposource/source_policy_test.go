@@ -10,6 +10,17 @@ import (
 	"testing"
 )
 
+func TestDockerSupportRemoved(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range []string{".dockerignore", "Dockerfile", "docker-compose.yml"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			t.Errorf("Docker support file must not exist: %s", name)
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestNonWebSourcesAreGo(t *testing.T) {
 	root := repoRoot(t)
 	skipDirs := map[string]bool{
@@ -28,19 +39,6 @@ func TestNonWebSourcesAreGo(t *testing.T) {
 		if entry.IsDir() {
 			if rel != "." && (skipDirs[entry.Name()] || rel == "web" || rel == "internal/admin/dist") {
 				return filepath.SkipDir
-			}
-			return nil
-		}
-		if rel == "Dockerfile" {
-			raw, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			lower := strings.ToLower(string(raw))
-			for _, forbidden := range []string{"python3", "python ", " apk add --no-cache wget", "bash "} {
-				if strings.Contains(lower, forbidden) {
-					t.Errorf("Dockerfile still depends on %q", strings.TrimSpace(forbidden))
-				}
 			}
 			return nil
 		}

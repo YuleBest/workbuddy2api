@@ -103,8 +103,8 @@ body:
       description: 逐行填写。版本号写 release tag 或 commit hash，不要写「最新版」。
       value: |
         - 项目版本（release tag 或 commit hash）：
-        - 部署方式（Docker Compose / 源码构建 / 其他）：
-        - 镜像 tag 或完整启动命令：
+        - 部署方式（源码构建 / 预编译二进制 / 其他）：
+        - 完整启动命令：
         - Go 版本（源码构建时）：
         - 客户端（类型 + 版本，如 Cherry Studio x.y.z / OpenAI SDK x.y.z / curl）：
         - 操作系统与版本：

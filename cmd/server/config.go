@@ -82,7 +82,7 @@ type Config struct {
 		CliVersion string `json:"cli_version"`
 
 		// DeviceToken 设备风控 Token（X-Device-Token 头）全局兜底。
-		// 容器内无桌面端 Turing SDK，这是把外部生成的 token 注入的入口；空 = 不注入。
+		// 无桌面端 Turing SDK 时，这是把外部生成的 token 注入的入口；空 = 不注入。
 		// 每号覆盖优先级：auths 文件 device_token > 本全局值 > DeviceTokenFile（文件兜底）。
 		DeviceToken string `json:"device_token"`
 		// DeviceTokenFile 宿主落盘的 device token 文件路径（可选，空 = 不读文件）。

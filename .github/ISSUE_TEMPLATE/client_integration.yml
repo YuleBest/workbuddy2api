@@ -134,8 +134,8 @@ body:
     id: environment
     attributes:
       label: 运行环境
-      description: 网关侧与客户端侧的操作系统 / 容器环境，以及两端网络关系（同机 / 局域网 / 反向代理 / 隧道）。
-      placeholder: 网关：Debian 12 + Docker 24；客户端：Windows 11；网络：同机 127.0.0.1
+      description: 网关侧与客户端侧的操作系统 / 运行环境，以及两端网络关系（同机 / 局域网 / 反向代理 / 隧道）。
+      placeholder: 网关：Debian 13 + systemd；客户端：Windows 11；网络：同机 127.0.0.1
     validations:
       required: true
 
@@ -145,7 +145,7 @@ body:
       label: 网关版本来源
       description: 便于判断是否为已知问题。
       options:
-        - "release tag / 官方镜像"
+        - "release tag / 预编译二进制"
         - "master 分支源码自行构建"
         - "fork 或第三方修改版（请说明）"
         - "不确定"

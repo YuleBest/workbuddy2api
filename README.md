@@ -18,13 +18,13 @@
 
 ## 快速开始
 
-- [Docker Compose 一键部署](docs/deploy.md#docker-compose-一键部署)
 - [Windows 原生部署（计划任务）](docs/deploy.md#windows-原生部署计划任务)
 - [源码构建](docs/deploy.md#源码构建)
+- [源码与运行目录分离](docs/deploy.md#源码与运行目录分离)
 
 ## 文档
 
-- [部署](docs/deploy.md)：Docker Compose、Windows 计划任务、源码构建、验证
+- [部署](docs/deploy.md)：Windows 计划任务、源码构建、运行目录分离、验证
 - [核心能力](docs/features.md)：账号池、流量治理、选号语义、请求链路、定时任务、双域、架构图
 - [管理后台与 CLI](docs/admin.md)：面板页面、多 key 存储、`wbapi` 命令表
 - [配置](docs/config.md)：配置段要点、环境变量、fail-fast 行为

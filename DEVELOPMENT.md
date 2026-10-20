@@ -73,8 +73,8 @@ pnpm build:only          # 跳过类型检查的快速构建
 web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed──▶ 二进制
 ```
 
-- `internal/admin/dist` 是构建产物，**提交进版本库**：这样只改后端的人（以及 Dockerfile 的
-  `go build`）不需要 Node 就能编译。**前端产物和后端代码必须一起提交**，否则二进制里是旧页面。
+- `internal/admin/dist` 是构建产物，**提交进版本库**：这样只改后端的人不需要 Node 就能编译。
+  **前端产物和后端代码必须一起提交**，否则二进制里是旧页面。
 - 改完前端必须重新 `pnpm build` 再 `go build`。
 - `internal/admin/webui.go` 负责静态资源与 SPA 回退：命中文件按扩展名给 Content-Type，
   `assets/` 下（内容哈希文件名）长缓存，其余 `no-cache`，未知路径回退 `index.html` 交给前端路由。
@@ -157,7 +157,7 @@ web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed─�
 
 ## Windows 部署
 
-本 fork 的目标部署形态之一是 Windows 计划任务（另一套是 Docker / systemd）：
+本 fork 支持 Windows 计划任务与 Linux systemd：
 
 - 二进制为仓库根的 `server.exe` / `wbapi.exe`，由计划任务 `wbapi-gateway` / `wbapi-tunnel` 拉起。
 - 计划任务直接执行 Go 二进制，不再使用 `.cmd`：网关执行 `server.exe -config config.json`，

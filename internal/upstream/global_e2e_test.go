@@ -701,5 +701,5 @@ func TestGlobalE2EGatewayChat(t *testing.T) {
 		}
 		t.Logf("  非 2xx body: %s", bodyStr)
 	}
-	t.Logf("  注#10: 选号/出站域/日志见容器 docker logs（uid 见 auths/ 下 global 账号，host workbuddy.ai）")
+	t.Logf("  注#10: 选号/出站域/日志见网关服务日志（uid 见 auths/ 下 global 账号，host workbuddy.ai）")
 }

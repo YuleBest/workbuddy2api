@@ -34,7 +34,7 @@ import (
 )
 
 // 登录 state 落盘路径（var 便于测试替换临时文件）。
-// 跨平台：os.TempDir() 在 Linux 解析为 /tmp（容器内行为不变），Windows 解析为
+// 跨平台：os.TempDir() 在 Linux 解析为 /tmp，Windows 解析为
 // 系统临时目录，避免硬编码 /tmp 在 Windows 上 "The system cannot find the path"。
 var stateFile = filepath.Join(os.TempDir(), "wb2api-login-state.json")
 
@@ -215,11 +215,6 @@ func main() {
 			runner.AuthDir = v
 		} else {
 			runner.AuthDir = filepath.Join(home, "auths")
-		}
-		if v := os.Getenv("WB2A_CONFIG"); v != "" {
-			runner.ConfigPath = v
-		} else {
-			runner.ConfigPath = filepath.Join(home, "config.json")
 		}
 		os.Exit(runner.Run(context.Background()))
 	}

@@ -53,9 +53,7 @@ type Runner struct {
 	RealmExplicit bool
 
 	AuthDir        string
-	ConfigPath     string
 	OAuthStatePath string
-	StatusURL      string
 
 	OAuthBaseURL  string
 	OAuthOrigin   string
@@ -64,7 +62,6 @@ type Runner struct {
 	HTTPClient    *http.Client
 	RunCommand    CommandFunc
 	LookPath      func(string) (string, error)
-	Sleep         func(time.Duration)
 	Now           func() time.Time
 	Getenv        func(string) string
 	LookupUID     func(string) (int, error)
@@ -82,15 +79,12 @@ func NewRunner() *Runner {
 		StdinTTY:       isCharacterDevice(os.Stdin),
 		Realm:          RealmCN,
 		AuthDir:        "auths",
-		ConfigPath:     "config.json",
 		OAuthStatePath: StatePath(),
-		StatusURL:      "http://127.0.0.1:7863/status",
 		CNBaseURL:      "https://www.codebuddy.cn",
 		GlobalBaseURL:  "https://www.workbuddy.ai",
 		HTTPClient:     &http.Client{Timeout: 30 * time.Second, Jar: jar},
 		RunCommand:     ExecCommand,
 		LookPath:       exec.LookPath,
-		Sleep:          time.Sleep,
 		Now:            time.Now,
 		Getenv:         os.Getenv,
 		LookupUID:      lookupUID,
@@ -145,14 +139,8 @@ func (base *Runner) withDefaults() *Runner {
 	if r.AuthDir == "" {
 		r.AuthDir = defaults.AuthDir
 	}
-	if r.ConfigPath == "" {
-		r.ConfigPath = defaults.ConfigPath
-	}
 	if r.OAuthStatePath == "" {
 		r.OAuthStatePath = defaults.OAuthStatePath
-	}
-	if r.StatusURL == "" {
-		r.StatusURL = defaults.StatusURL
 	}
 	if r.CNBaseURL == "" {
 		r.CNBaseURL = defaults.CNBaseURL
@@ -168,9 +156,6 @@ func (base *Runner) withDefaults() *Runner {
 	}
 	if r.LookPath == nil {
 		r.LookPath = defaults.LookPath
-	}
-	if r.Sleep == nil {
-		r.Sleep = defaults.Sleep
 	}
 	if r.Now == nil {
 		r.Now = defaults.Now
@@ -301,7 +286,6 @@ func (base *Runner) Run(ctx context.Context) int {
 	if realm == RealmGlobal {
 		r.runGlobal(ctx, result.Token.AccessToken, result.Account.UID, reader)
 	}
-	r.restartDocker(ctx)
 
 	fmt.Fprintln(r.Out)
 	fmt.Fprintln(r.Out, "============================================================")
@@ -347,7 +331,10 @@ func (r *Runner) expectedOwnerUID(ctx context.Context) int {
 			return uid
 		}
 	}
-	return 10001
+	if uid := os.Getuid(); uid >= 0 {
+		return uid
+	}
+	return -1
 }
 
 func (r *Runner) warnOwnerMismatch(path string, expectedUID int) {
@@ -435,15 +422,4 @@ func shortJSON(value any, max int) string {
 		return text
 	}
 	return string(runes[:max])
-}
-
-func requestError(stderr []byte, err error) string {
-	if err == nil {
-		return ""
-	}
-	text := strings.TrimSpace(string(stderr))
-	if text != "" {
-		return text
-	}
-	return err.Error()
 }

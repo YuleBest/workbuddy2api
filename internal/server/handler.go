@@ -532,7 +532,7 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	// 只落"大请求"（≥4MB 固定阈值，原 max_body_mb/2 语义的接替）：小探针
 	// （{"input":"hi"} 之类）会覆盖掉真正要看的对话请求。
 	if os.Getenv("WB2A_DUMP_REQ") != "" && len(body) >= dumpReqMinBytes {
-		if err := os.WriteFile("/app/data/last_request.json", body, 0o600); err != nil {
+		if err := os.WriteFile("last_request.json", body, 0o600); err != nil {
 			log.Printf("ERR: [server] dump req: %v", err)
 		}
 	}
