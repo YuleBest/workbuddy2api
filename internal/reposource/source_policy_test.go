@@ -42,6 +42,16 @@ func TestNonWebSourcesAreGo(t *testing.T) {
 			}
 			return nil
 		}
+		if rel == "install.sh" {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if !bytes.HasPrefix(raw, []byte("#!/usr/bin/env bash\n")) {
+				t.Errorf("install.sh must start with a bash shebang")
+			}
+			return nil
+		}
 		switch strings.ToLower(filepath.Ext(rel)) {
 		case ".py", ".cmd", ".bat", ".ps1":
 			t.Errorf("non-Go runtime source is not allowed: %s", rel)

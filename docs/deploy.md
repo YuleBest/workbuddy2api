@@ -14,6 +14,39 @@
 
 本项目不提供 Docker 镜像。
 
+## Linux 一键安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YuleBest/workbuddy2api/master/install.sh | bash
+```
+
+安装器会完成以下操作：
+
+1. 检测 Linux `amd64` 或 `arm64`。
+2. 下载 `v1.0.0` Release 压缩包和 `SHA256SUMS`。
+3. 校验 SHA-256。
+4. 安装到 `~/.local/share/wb2api`。
+5. 创建 `wb2api`、`wbapi` 和 `wb2api-login` 命令入口。
+6. 首次安装时生成随机 `api_key`，启用管理面板并打印地址。
+
+默认不会启动网关，也不会创建 systemd 服务、计划任务或 cloudflared 配置。
+
+可以提前下载脚本检查：
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/YuleBest/workbuddy2api/master/install.sh
+less install.sh
+bash install.sh
+```
+
+可选环境变量：
+
+| 变量 | 作用 |
+| --- | --- |
+| `WB2API_VERSION` | 安装指定版本，默认 `v1.0.0` |
+| `WB2API_HOME` | 修改运行目录 |
+| `WB2API_BIN_DIR` | 修改命令链接目录，默认 `~/.local/bin` |
+
 ## 下载 Release
 
 每个 Release 提供以下运行包：

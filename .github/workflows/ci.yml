@@ -22,3 +22,9 @@ jobs:
         run: go test ./...
       - name: Vet
         run: go vet ./...
+      - name: Validate installer
+        run: |
+          bash -n install.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck install.sh
+          fi

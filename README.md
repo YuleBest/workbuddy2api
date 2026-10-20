@@ -19,10 +19,16 @@
 
 ## 快速开始
 
-1. 从 [GitHub Releases](https://github.com/YuleBest/workbuddy2api/releases/latest) 下载对应平台压缩包。
-2. 解压后复制 `config.example.json` 为 `config.json`，至少设置 `api_key`。
-3. 运行 `login` 或 `login.exe` 添加账号。
-4. 启动 `wb2api`，运行 `wbapi doctor` 检查部署状态。
+Linux 一键安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YuleBest/workbuddy2api/master/install.sh | bash
+```
+
+安装器会下载当前版本的 Linux Release 包，校验 SHA-256，安装到用户目录，并打印管理面板地址。
+它不会创建系统服务、启动计划或 cloudflared 配置。
+
+其他平台可以从 [GitHub Releases](https://github.com/YuleBest/workbuddy2api/releases/latest) 下载对应压缩包。
 
 完整步骤见[部署文档](docs/deploy.md)。
 

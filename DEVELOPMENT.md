@@ -7,6 +7,7 @@
 - 服务端、CLI、登录、任务和发布工具全部使用 Go。
 - `web/` 使用 Vue 3、TypeScript 和 Vite，只允许在管理面板构建链路中使用。
 - 运行时不能依赖 Python、Shell、Batch 或 Node。
+- 仓库根 `install.sh` 是唯一的 Shell 引导器，只负责下载、校验和解压 Release 包。
 - 项目不提供 Docker 支持，除非后续明确重新引入。
 - 修改核心行为时必须保留 OpenAI 兼容接口和现有配置键语义。
 
