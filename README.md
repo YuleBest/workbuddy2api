@@ -18,6 +18,7 @@
 
 ## 快速开始
 
+- [下载预构建版本](https://github.com/YuleBest/workbuddy2api/releases/latest)
 - [Windows 原生部署（计划任务）](docs/deploy.md#windows-原生部署计划任务)
 - [源码构建](docs/deploy.md#源码构建)
 - [源码与运行目录分离](docs/deploy.md#源码与运行目录分离)

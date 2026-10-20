@@ -2,6 +2,20 @@
 
 [← 返回 README](../README.md)
 
+## 预构建发布包
+
+GitHub Release 会提供以下 6 个运行包，无需在本机安装 Go：
+
+- `workbuddy2api-<tag>-linux-amd64.tar.gz`
+- `workbuddy2api-<tag>-linux-arm64.tar.gz`
+- `workbuddy2api-<tag>-darwin-amd64.tar.gz`
+- `workbuddy2api-<tag>-darwin-arm64.tar.gz`
+- `workbuddy2api-<tag>-windows-amd64.zip`
+- `workbuddy2api-<tag>-windows-arm64.zip`
+
+每个包包含完整运行命令、`config.example.json`、`README.md` 和 `LICENSE`。
+Release 同时提供 `SHA256SUMS`，下载后可先校验再解压。
+
 ## Windows 原生部署（计划任务）
 
 - Windows 10/11

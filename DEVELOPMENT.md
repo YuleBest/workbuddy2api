@@ -58,6 +58,12 @@ pnpm build               # 类型检查 + 构建，产物落 internal/admin/dist
 pnpm build:only          # 跳过类型检查的快速构建
 ```
 
+## 发布
+
+推送版本 tag 并发布 GitHub Release 后，`.github/workflows/release.yml` 会为 Linux、macOS、
+Windows 的 `amd64` / `arm64` 构建 6 个运行包，并把压缩包与 `SHA256SUMS` 附加到 Release。
+普通 push 和 PR 只运行测试，不生成发布包。
+
 ## 管理后台的构建链路
 
 ```
