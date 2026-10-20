@@ -74,9 +74,12 @@ func (a *App) cmdModels(args []string) int {
 	for i, arg := range args {
 		if arg == "--realm" {
 			if i+1 >= len(args) {
-				return a.fail("用法: wbapi models [--realm cn|global] [--more]")
+				return a.usageError("models", "", "--realm 缺少值")
 			}
 			realm = args[i+1]
+			if realm != "cn" && realm != "global" {
+				return a.usageError("models", "", "--realm 只支持 cn 或 global")
+			}
 			break
 		}
 	}

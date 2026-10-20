@@ -16,12 +16,12 @@ var taskLabels = map[string]string{
 
 func (a *App) cmdTask(args []string) int {
 	if len(args) == 0 {
-		return a.fail("用法: wbapi task <checkin|activity|travel|keepalive|school|cat> [--wait]")
+		return a.usageError("task", "", "缺少任务名")
 	}
 	name := args[0]
 	label, ok := taskLabels[name]
 	if !ok {
-		return a.fail(fmt.Sprintf("未知任务 %s；可选: checkin, activity, travel, keepalive, school, cat", pythonRepr(name)))
+		return a.usageError("task", "", fmt.Sprintf("未知任务 %q", name))
 	}
 	wait := containsArgument(args, "--wait") || (name == "checkin" && !containsArgument(args, "--async"))
 	path := "/tasks/" + name

@@ -59,6 +59,9 @@ token 来源优先级：`admin.token` → `keys.json` 首个 key → `config.jso
 
 `wbapi` 是 Go 二进制，把日常运维收成一个命令，自动读 `config.json` 拿网关地址与 key：
 
+不知道参数时先运行 `wbapi help`。每个命令都支持 `wbapi help <命令>`、`wbapi help <命令> <子命令>`，
+也可以直接在命令后加 `-h` 或 `--help`，例如 `wbapi task checkin --help`。
+
 | 命令 | 作用 |
 | --- | --- |
 | `wbapi status` | 网关 / 隧道状态 + `/healthz` 探活 + 池子计数（默认动作，别名 `check`） |

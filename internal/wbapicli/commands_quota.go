@@ -11,6 +11,9 @@ func (a *App) cmdQuota(args []string) int {
 	if len(args) > 0 && args[0] == "test" {
 		return a.cmdQuotaTest(args[1:])
 	}
+	if len(args) > 0 {
+		return a.usageError("quota", "", fmt.Sprintf("未知子命令 %q", args[0]))
+	}
 	st, data := a.request("/status", a.gatewayToken(), "GET", nil, 15*time.Second)
 	if st != 200 {
 		return a.fail("读取池状态失败：" + errMessage(data, "请求失败"))

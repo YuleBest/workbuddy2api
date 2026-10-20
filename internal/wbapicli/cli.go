@@ -11,16 +11,32 @@ func Run(opts Options) int {
 	if len(opts.Args) > 0 && opts.Args[0] == "healthcheck" {
 		app.quietConfig = true
 	}
-	app.loadConfig()
+	if !isHelpRequest(opts.Args) {
+		app.loadConfig()
+	}
 	return app.run(opts.Args)
 }
 
 func (a *App) run(args []string) int {
-	cmd := "status"
-	var rest []string
-	if len(args) > 0 {
-		cmd = args[0]
-		rest = args[1:]
+	if len(args) == 0 {
+		return a.cmdStatus()
+	}
+	cmd := args[0]
+	rest := args[1:]
+	if cmd == "help" {
+		return a.cmdHelp(rest)
+	}
+	if cmd == "-h" || cmd == "--help" {
+		return a.cmdHelp(nil)
+	}
+	if containsHelpFlag(rest) {
+		helpArgs := []string{cmd}
+		if _, hasChildren := commandSubHelp[normalizeHelpTopic(cmd)]; hasChildren {
+			if sub := firstHelpArgument(rest); sub != "" {
+				helpArgs = append(helpArgs, sub)
+			}
+		}
+		return a.cmdHelp(helpArgs)
 	}
 	switch cmd {
 	case "status", "check":
@@ -50,7 +66,7 @@ func (a *App) run(args []string) int {
 		if len(rest) > 0 {
 			value, err := strconv.Atoi(rest[0])
 			if err != nil {
-				return a.fail(fmt.Sprintf("日志行数必须是整数：%s", rest[0]))
+				return a.usageError("log", "", fmt.Sprintf("日志行数必须是整数：%s", rest[0]))
 			}
 			n = value
 		}
@@ -61,13 +77,85 @@ func (a *App) run(args []string) int {
 		return a.cmdTunnel(rest)
 	case "healthcheck":
 		return a.cmdHealthcheck()
-	case "help", "-h", "--help":
-		fmt.Fprint(a.stdout, helpText)
-		return 0
 	default:
-		fmt.Fprint(a.stdout, helpText)
+		fmt.Fprintf(a.stderr, "错误: 未知命令 %q\n", cmd)
+		fmt.Fprintln(a.stderr, "运行 `wbapi help` 查看可用命令。")
 		return 2
 	}
+}
+
+func (a *App) cmdHelp(args []string) int {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg != "-h" && arg != "--help" {
+			filtered = append(filtered, arg)
+		}
+	}
+	if len(filtered) == 0 {
+		fmt.Fprint(a.stdout, renderMainHelp())
+		return 0
+	}
+	topic := filtered[0]
+	sub := ""
+	if len(filtered) > 1 {
+		sub = filtered[1]
+	}
+	if sub != "" {
+		topic = normalizeHelpTopic(topic)
+		sub = normalizeHelpSubcommand(topic, sub)
+		children, hasChildren := commandSubHelp[topic]
+		if !hasChildren {
+			fmt.Fprintf(a.stderr, "错误: %q 没有子命令 %q\n", topic, sub)
+			fmt.Fprintf(a.stderr, "运行 `wbapi help %s` 查看用法。\n", topic)
+			return 2
+		}
+		if _, ok := children[sub]; !ok {
+			fmt.Fprintf(a.stderr, "错误: %q 没有子命令 %q\n", topic, sub)
+			fmt.Fprintf(a.stderr, "运行 `wbapi help %s` 查看可用子命令。\n", topic)
+			return 2
+		}
+	}
+	text, ok := renderCommandHelp(topic, sub)
+	if !ok {
+		fmt.Fprintf(a.stderr, "错误: 没有 %q 的帮助信息\n", topic)
+		fmt.Fprintln(a.stderr, "运行 `wbapi help` 查看可用命令。")
+		return 2
+	}
+	fmt.Fprint(a.stdout, text)
+	return 0
+}
+
+func (a *App) usageError(topic, sub, message string) int {
+	fmt.Fprintf(a.stderr, "错误: %s\n", message)
+	target := strings.TrimSpace("wbapi help " + topic + " " + sub)
+	fmt.Fprintf(a.stderr, "运行 `%s` 查看用法。\n", target)
+	return 2
+}
+
+func containsHelpFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+func isHelpRequest(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return args[0] == "help" || args[0] == "-h" || args[0] == "--help" || containsHelpFlag(args[1:])
+}
+
+func firstHelpArgument(args []string) string {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return arg
+	}
+	return ""
 }
 
 func (a *App) cmdKey(allArgs, rest []string) int {
@@ -93,12 +181,11 @@ func (a *App) cmdKey(allArgs, rest []string) int {
 		return a.cmdKeyNew(note)
 	case "revoke", "rm", "delete":
 		if len(rest) < 2 {
-			return a.fail("用法: wbapi key revoke <前缀>")
+			return a.usageError("key", "revoke", "缺少要吊销的密钥前缀")
 		}
 		return a.cmdKeyRevoke(rest[1])
 	default:
-		fmt.Fprint(a.stdout, helpText)
-		return 0
+		return a.usageError("key", "", fmt.Sprintf("未知子命令 %q", sub))
 	}
 }
 

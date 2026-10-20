@@ -39,10 +39,10 @@ func (a *App) cmdAcct(args []string) int {
 		return a.cmdAccounts()
 	}
 	if sub != "disable" && sub != "enable" && sub != "revive" {
-		return a.fail(fmt.Sprintf("未知子命令 %s；用法: wbapi acct list|disable|enable|revive", pythonRepr(sub)))
+		return a.usageError("acct", "", fmt.Sprintf("未知子命令 %q", sub))
 	}
 	if len(args) < 2 {
-		return a.fail(fmt.Sprintf("用法: wbapi acct %s <uid 或前缀> [原因]", sub))
+		return a.usageError("acct", sub, "缺少账号 UID 或前缀")
 	}
 	uid, code := a.resolveUID(args[1])
 	if code != 0 {
