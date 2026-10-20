@@ -2,135 +2,249 @@
 
 [← 返回 README](../README.md)
 
-## 预构建发布包
+## 选择安装方式
 
-GitHub Release 会提供以下 6 个运行包，无需在本机安装 Go：
+推荐使用 GitHub Release 预构建包，不需要安装 Go。只有修改源码或参与开发时才需要本地构建。
 
-- `workbuddy2api-<tag>-linux-amd64.tar.gz`
-- `workbuddy2api-<tag>-linux-arm64.tar.gz`
-- `workbuddy2api-<tag>-darwin-amd64.tar.gz`
-- `workbuddy2api-<tag>-darwin-arm64.tar.gz`
-- `workbuddy2api-<tag>-windows-amd64.zip`
-- `workbuddy2api-<tag>-windows-arm64.zip`
+| 方式 | 适用场景 | 额外要求 |
+| --- | --- | --- |
+| Release 预构建包 | 直接部署 | 无 |
+| 源码构建 | 修改代码或自行编译 | Go 1.22+ |
+| 前端开发 | 修改管理面板 | Node 20+、pnpm 9+ |
 
-每个包包含完整运行命令、`config.example.json`、`README.md` 和 `LICENSE`。
-Release 同时提供 `SHA256SUMS`，下载后可先校验再解压。
+本项目不提供 Docker 镜像。
 
-## Windows 原生部署（计划任务）
+## 下载 Release
 
-- Windows 10/11
-- Go 1.22+（只用源码构建）
+每个 Release 提供以下运行包：
+
+| 平台 | 架构 | 文件 |
+| --- | --- | --- |
+| Linux | `amd64` | `workbuddy2api-<tag>-linux-amd64.tar.gz` |
+| Linux | `arm64` | `workbuddy2api-<tag>-linux-arm64.tar.gz` |
+| macOS | `amd64` | `workbuddy2api-<tag>-darwin-amd64.tar.gz` |
+| macOS | `arm64` | `workbuddy2api-<tag>-darwin-arm64.tar.gz` |
+| Windows | `amd64` | `workbuddy2api-<tag>-windows-amd64.zip` |
+| Windows | `arm64` | `workbuddy2api-<tag>-windows-arm64.zip` |
+
+Release 同时包含 `SHA256SUMS`。压缩包内包含完整运行命令、`config.example.json`、README 和 LICENSE。
+
+Linux 或 macOS 校验单个下载文件：
+
+```bash
+grep 'linux-amd64' SHA256SUMS | sha256sum -c -
+# macOS 使用：
+grep 'darwin-arm64' SHA256SUMS | shasum -a 256 -c -
+```
+
+Windows PowerShell 校验：
+
+```powershell
+Get-FileHash .\workbuddy2api-<tag>-windows-amd64.zip -Algorithm SHA256
+```
+
+## Linux systemd 部署
+
+下面以 `/home/your-user/wb2api` 为运行目录。不要把配置、凭证和日志放在 Git 源码目录。
+
+```bash
+mkdir -p /home/your-user/wb2api
+tar -xzf workbuddy2api-<tag>-linux-amd64.tar.gz -C /home/your-user/wb2api
+cd /home/your-user/wb2api
+cp config.example.json config.json
+```
+
+编辑 `config.json`。至少设置：
+
+```json
+{
+  "listen": "127.0.0.1:7863",
+  "api_key": "replace-with-a-random-key"
+}
+```
+
+添加账号：
+
+```bash
+./login
+# 国际版账号：
+./login --realm=global
+```
+
+登录完成后，凭证写入 `auths/`，运行中的网关会自动加载，不需要重启。
+
+创建 `/etc/systemd/system/wbapi-gateway.service`：
+
+```ini
+[Unit]
+Description=WorkBuddy2API Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=your-user
+WorkingDirectory=/home/your-user/wb2api
+ExecStart=/home/your-user/wb2api/wb2api -config /home/your-user/wb2api/config.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用并检查：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now wbapi-gateway
+cd /home/your-user/wb2api
+./wbapi doctor
+curl -s http://127.0.0.1:7863/healthz
+```
+
+如果使用 Cloudflare Tunnel，请单独创建 `wbapi-tunnel.service`。`wbapi tunnel` 默认操作该服务名。
+
+## macOS 运行
+
+解压对应 `darwin` 包，例如到 `/Users/your-user/wb2api`：
+
+```bash
+mkdir -p /Users/your-user/wb2api
+tar -xzf workbuddy2api-<tag>-darwin-arm64.tar.gz -C /Users/your-user/wb2api
+cd /Users/your-user/wb2api
+cp config.example.json config.json
+./login
+./wb2api -config "$PWD/config.json"
+```
+
+长期后台运行可以创建 `~/Library/LaunchAgents/com.yule.wb2api.plist`，在 `ProgramArguments` 中填写 `wb2api` 和配置文件的绝对路径，然后加载：
+
+```bash
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.yule.wb2api.plist"
+```
+
+## Windows 计划任务
+
+解压 Windows 包到运行目录，例如 `C:\wb2api`，然后：
 
 ```powershell
 Copy-Item config.example.json config.json
-# 编辑 config.json；建议把 listen 设为 127.0.0.1:7863，且务必设置 api_key
-
-go run ./cmd/build
+# 编辑 config.json，建议设置 listen=127.0.0.1:7863 和 api_key
+.\login.exe
 ```
 
-把两个启动入口注册成计划任务（本仓库的约定名字是 `wbapi-gateway` / `wbapi-tunnel`，`wbapi` 的服务命令按这两个名字操作）：
-
-- `wbapi-gateway` — 直接执行 `server.exe -config config.json`
-- `wbapi-tunnel` — 直接执行 `cloudflared.exe` 与本机隧道参数
+创建两个登录时启动的计划任务：
 
 ```powershell
-# 以「登录时触发」注册（示例；按需改成开机触发或加延迟）
-schtasks /Create /TN wbapi-gateway /SC ONLOGON /TR "\"C:\path\to\wb2api-fork\server.exe\" -config config.json" /F
-schtasks /Create /TN wbapi-tunnel  /SC ONLOGON /TR "\"C:\path\to\cloudflared.exe\" tunnel run" /F
+schtasks /Create /TN wbapi-gateway /SC ONLOGON /TR "\"C:\wb2api\server.exe\" -config C:\wb2api\config.json" /F
+schtasks /Create /TN wbapi-tunnel  /SC ONLOGON /TR "\"C:\cloudflared\cloudflared.exe\" tunnel run" /F
 ```
 
-计划任务按本机绝对路径和真实隧道参数创建。之后统一用 `wbapi.exe` 操作：
+常用命令：
 
-```bash
-wbapi status      # 网关 / 隧道 / 池子状态
-wbapi start       # = schtasks /Run /TN wbapi-gateway + tunnel
-wbapi restart     # 重启（隧道会闪断几秒）
-wbapi log 50      # 网关日志尾部
+```powershell
+.\wbapi.exe status
+.\wbapi.exe start
+.\wbapi.exe restart
+.\wbapi.exe log 50
 ```
 
-`wbapi.exe`、`login.exe` 等全部由 Go 构建器生成，不依赖 Python。添加账号运行
-`.\login.exe --realm=cn` 或 `.\login.exe --realm=global`；它同时负责 CN 首次签到和
-Global 注册地区 / trial 流程。凭证写入 `auths/` 后网关会自动热加载，不需要重启。
+Windows 日志读取运行目录中的 `gateway.log` 和 `gateway.err.log`。
 
 ## 源码构建
 
-- Go ≥ 1.22
-- 改前端还需 Node ≥ 20 + pnpm ≥ 9
+环境要求：
 
-管理面板是 Vue 3 单页应用，构建产物经 `go:embed` 打进二进制（仓库内已含一份构建产物，只改后端时可直接编译）。**改动 `web/` 下的前端代码后**，要先重新构建前端：
+- Go 1.22+
+- 仅在修改 `web/` 时需要 Node 20+ 和 pnpm 9+
 
-```bash
-cd web && pnpm install && pnpm build
-cd .. && go build ./cmd/server
-```
-
-开发前端时用 `pnpm dev` 起 Vite 开发服务器（已配置把 `/api/admin` 代理到 `127.0.0.1:7863`），改完再 `pnpm build` 落到二进制里。
+克隆源码后构建：
 
 ```bash
-go build ./...
-go vet ./...
-go test ./...      # 完整测试套件
-go run ./cmd/server -config config.json
-```
-
-构建二进制：
-
-```bash
+git clone https://github.com/YuleBest/workbuddy2api.git
+cd workbuddy2api
 go run ./cmd/build
 ```
 
-构建产物默认写入 `dist/`。该命令一次构建服务、运维 CLI、任务命令以及 `login.sh` / `signin.sh` / `credit.sh` /
-`trial.sh` / `acct.sh` / `checkin.sh` / `dev.sh` 等旧 Unix 命令名。它们都是 Go ELF，
-不是 Shell 脚本。
+产物默认写入 `dist/`，包括服务端、运维 CLI、登录、任务和兼容命令名。
+
+修改了管理面板时，先构建前端：
+
+```bash
+cd web
+pnpm install
+pnpm build
+cd ..
+go run ./cmd/build
+```
+
+运行完整检查：
+
+```bash
+go test ./...
+go vet ./...
+```
 
 ## 源码与运行目录分离
 
-生产目录和开发目录应分开，避免配置、凭证、日志和二进制污染 Git 工作树：
+开发目录只保存源码、构建产物和 Git 数据；生产配置、凭证、日志和正在运行的二进制应放在独立运行目录。
 
 ```text
-源码目录：  ~/projects/wb2api
-运行目录：  ~/.local/share/wb2api
+源码目录：~/projects/wb2api
+运行目录：~/.local/share/wb2api
 ```
 
-运行目录保存 `wb2api`、`wbapi`、兼容命令、`config.json`、`keys.json`、`auths/`、
-`data/` 和 `cloudflared/`。systemd 单元示例：
+运行目录通常包含：
 
-```ini
-[Service]
-User=yule
-WorkingDirectory=/home/yule/.local/share/wb2api
-ExecStart=/home/yule/.local/share/wb2api/wb2api -config /home/yule/.local/share/wb2api/config.json
-Restart=on-failure
-RestartSec=5
+```text
+wb2api
+wbapi
+login
+config.json
+keys.json
+auths/
+data/
+cloudflared/
 ```
 
-升级时从源码目录构建到临时 staging，再由 detached systemd 任务原子安装到运行目录并重启。
-不要在源码目录直接运行生产网关。
+升级时先在源码目录构建到临时 staging，再通过服务管理流程把二进制原子安装到运行目录并重启。
+不要在源码目录直接运行生产网关，也不要在服务运行期间逐文件覆盖二进制。
+
+## 发布流程
+
+发布 GitHub Release 后，`.github/workflows/release.yml` 会自动构建 6 个平台包并上传 `SHA256SUMS`。
+普通 push 和 Pull Request 只运行测试，不生成发布包。
 
 ## 验证
 
+先用 CLI 检查服务和账号：
+
 ```bash
-# 模型列表
-curl -s http://localhost:7863/v1/models -H "Authorization: Bearer your-api-key"
+./wbapi status
+./wbapi accounts
+./wbapi doctor
+```
 
-# 账号状态（汇总 + 每账号详情，含 disabled / manual_disabled 双位）
-curl -s http://localhost:7863/status -H "Authorization: Bearer your-api-key"
+再验证模型接口：
 
-# 临时停用一个账号（需 config 里 admin.enabled = true）
-curl -s -X POST http://localhost:7863/admin/accounts/<uid>/disable \
-  -H "Authorization: Bearer your-api-key" -H "Content-Type: application/json" \
-  -d '{"reason":"观察几天"}'
-# 或用 CLI（自动从 config.json 读网关地址与 key）
-./acct list && ./acct disable <uid> 观察几天 && ./acct enable <uid>
+```bash
+curl -s http://127.0.0.1:7863/v1/models \
+  -H "Authorization: Bearer your-api-key"
+```
 
-# 流式聊天
-curl -sN http://localhost:7863/v1/chat/completions \
+发起流式请求：
+
+```bash
+curl -sN http://127.0.0.1:7863/v1/chat/completions \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hi"}],"stream":true}'
+```
 
-# 非流式聊天（本地聚合）
-curl -s http://localhost:7863/v1/chat/completions \
+发起非流式请求：
+
+```bash
+curl -s http://127.0.0.1:7863/v1/chat/completions \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hi"}],"stream":false}'

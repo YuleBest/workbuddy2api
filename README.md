@@ -1,37 +1,40 @@
 # WorkBuddy2API
 
-**把 CodeBuddy 账号变成 OpenAI 兼容 API 的多账号网关**
+把 CodeBuddy 与 WorkBuddy 账号接入 OpenAI 兼容接口的多账号网关。
 
-> [!TIP]
-> 仅限本人授权账号、本机、私有环境使用，勿暴露到公网，否则一切后果自负，本项目仅供学习用途，随时可能删库
+> [!WARNING]
+> 仅限本人已授权账号、本机或私有网络使用。不要把凭据、管理面板或网关端口暴露给未授权用户。
 
-项目源自已删除的 Sliverkiss/workbuddy2api，保留其账号池、调度与改写管线。本项目另加：
+项目源自已删除的 Sliverkiss/workbuddy2api，目前独立维护。核心服务、CLI、登录和任务工具均使用 Go；Vue 管理面板只在构建前端时需要 Node。
 
-- 内置管理面板
-- 多 key 存储
-- 纯 Go `wbapi` CLI、登录与任务工具
-- Windows 计划任务部署
-- 无 Python、Shell、Batch 运行时依赖
-- 更多...
+## 核心特性
 
-配置键与端点都是增量的，可直接替换上游二进制
+- 多账号池：按积分、过期时间和闲置状态分配请求，自动处理冷却、熔断和失败切换。
+- OpenAI 兼容：支持流式与非流式对话、工具调用、会话粘性、提示词模式和双域模型。
+- 内置管理面板：查看账号、密钥、日志、模型和运行状态，并执行常用运维动作。
+- 纯 Go 运行：不需要 Python、Shell 或 Batch。`.sh` 兼容命令也是 Go 可执行文件。
+- 原生发布包：GitHub Release 提供 Linux、macOS、Windows 的 `amd64` 与 `arm64` 版本。
+
+本项目不提供 Docker 镜像。
 
 ## 快速开始
 
-- [下载预构建版本](https://github.com/YuleBest/workbuddy2api/releases/latest)
-- [Windows 原生部署（计划任务）](docs/deploy.md#windows-原生部署计划任务)
-- [源码构建](docs/deploy.md#源码构建)
-- [源码与运行目录分离](docs/deploy.md#源码与运行目录分离)
+1. 从 [GitHub Releases](https://github.com/YuleBest/workbuddy2api/releases/latest) 下载对应平台压缩包。
+2. 解压后复制 `config.example.json` 为 `config.json`，至少设置 `api_key`。
+3. 运行 `login` 或 `login.exe` 添加账号。
+4. 启动 `wb2api`，运行 `wbapi doctor` 检查部署状态。
+
+完整步骤见[部署文档](docs/deploy.md)。
 
 ## 文档
 
-- [部署](docs/deploy.md)：Windows 计划任务、源码构建、运行目录分离、验证
-- [核心能力](docs/features.md)：账号池、流量治理、选号语义、请求链路、定时任务、双域、架构图
-- [管理后台与 CLI](docs/admin.md)：面板页面、多 key 存储、`wbapi` 命令表
-- [配置](docs/config.md)：配置段要点、环境变量、fail-fast 行为
-- [开发](DEVELOPMENT.md)：目录结构、前端构建、管理 API 约定、测试
-- [安全与许可](docs/compliance.md)：使用边界、免责声明、许可
+- [部署](docs/deploy.md)：Release 安装、Linux/macOS/Windows 运行、源码构建和运行目录分离。
+- [配置](docs/config.md)：常用配置段、环境变量和生效规则。
+- [管理后台与 CLI](docs/admin.md)：面板功能、调用密钥和 `wbapi` 命令。
+- [核心能力](docs/features.md)：账号池、请求链路、定时任务、双域和架构。
+- [开发说明](DEVELOPMENT.md)：目录、开发流程、内部约定、测试和发布。
+- [安全与许可](docs/compliance.md)：授权范围、免责声明和 MIT 许可。
 
 ## 许可
 
-MIT 许可，使用前请阅读[免责声明](docs/compliance.md)。
+本项目使用 MIT License。使用前请阅读[安全与许可](docs/compliance.md)。

@@ -1,201 +1,240 @@
 # 开发说明
 
-给仓库维护者与贡献者。部署与使用看 `README.md`。
+本文面向修改代码、构建发布包和维护仓库的开发者。安装与使用请看 [`README.md`](README.md) 和 [`docs/deploy.md`](docs/deploy.md)。
 
-## 分支
+## 项目边界
 
-`master` 是默认分支。功能改动使用独立分支开发，合并前至少通过 `go test ./...` 与
-`go vet ./...`。
+- 服务端、CLI、登录、任务和发布工具全部使用 Go。
+- `web/` 使用 Vue 3、TypeScript 和 Vite，只允许在管理面板构建链路中使用。
+- 运行时不能依赖 Python、Shell、Batch 或 Node。
+- 项目不提供 Docker 支持，除非后续明确重新引入。
+- 修改核心行为时必须保留 OpenAI 兼容接口和现有配置键语义。
 
 ## 目录结构
 
-```
-cmd/server          网关主程序（配置加载、pool/scheduler 组装、HTTP 服务）
-cmd/login           设备授权登录 CLI
-cmd/signin          单次签到 CLI
-cmd/credit          积分查询 CLI
-cmd/activity        活跃上报一次性触发器
-cmd/trial           国际版注册 / trial 加油包 CLI
-cmd/acct            账号停用 / 恢复 / 复活 CLI（走网关管理端点）
-cmd/stats           统计 CLI
-internal/admin      管理后台：观测 API + 运维动作 + 内嵌 SPA（dist 由 web/ 构建产出）
-internal/server     数据面：OpenAI 兼容 handler、鉴权、多 key 存储、请求日志
-internal/auth       凭证解析与原子写回
-internal/config     跨命令共享的配置段（schedule）与默认值
-internal/pool       账号池：选号 / 冷却 / 熔断 / 在途租约 / 状态持久化
-internal/scheduler  定时任务：签到 / 活跃上报 / 猫猫旅行 / 保活 / 开学季 / 夜猫子
-internal/session    会话粘性路由
-internal/upstream   上游客户端：SSE 流、请求体改写管线（含 ZCode 归一化）、错误分类
-internal/prompt     内置提示词
-internal/logfmt     日志行格式化
-internal/redisstore 池状态 Redis 镜像
-web                 Vue 3 + Vite + TS 管理面板源码
-cmd/wbapi           运维 CLI（Go）
-cmd/build           全量构建与旧命令名兼容产物生成器（Go）
-internal/tasks      growth / 开学季 / 夜猫子任务系统（Go）
+```text
+cmd/server          网关入口
+cmd/wbapi           运维 CLI
+cmd/login           OAuth 设备授权登录
+cmd/build           全量构建和兼容命令生成
+cmd/signin          签到
+cmd/credit          积分查询
+cmd/acct            账号停用、恢复和复活
+cmd/activity        活跃上报
+cmd/trial           国际版注册和 trial
+cmd/stats           终端统计工具
+cmd/school          开学季任务
+cmd/taskrunner      通用任务执行器
+cmd/taskcron        任务 cron 入口
+cmd/region          国际版地区设置
+
+internal/admin      管理接口、动作和嵌入式 SPA
+internal/auth       凭证解析和原子写回
+internal/config     共享配置结构
+internal/loginflow  登录流程
+internal/pool       账号池、选号、冷却和状态
+internal/redisstore Redis 状态镜像
+internal/scheduler  定时任务调度
+internal/server     OpenAI 兼容数据面和管理 API
+internal/session    会话粘性
+internal/tasks      任务执行和活动协议
+internal/upstream   上游请求、SSE 和改写管线
+internal/wbapicli   CLI 实现和帮助系统
+web                 Vue 3 管理面板源码
 ```
 
 ## 环境要求
 
-- Go ≥ 1.22（`go.mod` 声明 1.22.5）
-- Node ≥ 20 + pnpm ≥ 9（只改后端时不需要）
-- 一个已注册的 CodeBuddy 账号（跑真实请求时才需要）
+- Go 1.22+，`go.mod` 当前声明 `1.22.5`
+- Node 20+ 和 pnpm 9+，仅修改前端时需要
+- 一个已授权账号，仅在真实联调时需要
 
 ## 常用命令
 
-```bash
-# 后端
-go run ./cmd/build        # 构建全部二进制到 dist/，含旧 Unix 命令名兼容产物
-go build ./...
-go vet ./...
-go test ./...            # 完整测试套件
-go test -race ./internal/admin/ ./internal/pool/ ./internal/server/
+### 后端
 
-# 前端（web/ 目录）
-pnpm install
-pnpm dev                 # Vite 开发服务器，/api/admin 代理到 127.0.0.1:7863
-pnpm build               # 类型检查 + 构建，产物落 internal/admin/dist（被 go:embed 拾取）
-pnpm build:only          # 跳过类型检查的快速构建
+```bash
+go test ./...
+go vet ./...
+go run ./cmd/server -config config.json
+go run ./cmd/build
 ```
+
+`go run ./cmd/build` 将服务端、CLI、登录、任务和兼容命令构建到 `dist/`。
+
+### 前端
+
+```bash
+cd web
+pnpm install
+pnpm dev
+pnpm build
+pnpm build:only
+```
+
+- `pnpm dev` 启动 Vite 开发服务器，并把管理 API 代理到 `127.0.0.1:7863`。
+- `pnpm build` 执行 TypeScript 检查并写入 `internal/admin/dist`。
+- `pnpm build:only` 跳过类型检查，只适合快速本地预览。
+
+## 前端构建链路
+
+```text
+web/src --pnpm build--> internal/admin/dist --go:embed--> Go binary
+```
+
+约定：
+
+- `internal/admin/dist` 是嵌入二进制的构建产物，需要提交。
+- 修改 `web/` 后必须重新执行 `pnpm build`，再把前后端改动一起提交。
+- 管理面板路由固定为 `/admin/`，Go 前缀和 `vite.config.ts` 的 `base` 必须一致。
+- 未登录只允许访问 `/admin/login`，鉴权状态来自 `GET /api/admin/session`。
+- 静态资源哈希文件使用长缓存，其他文件使用 `no-cache`。
+
+## 管理入口
+
+网关有两组管理入口，但底层状态必须复用同一批方法。
+
+| 入口 | 路径 | 客户端 |
+| --- | --- | --- |
+| 兼容管理端点 | `/admin/accounts/{uid}/{disable,enable,revive}` | `acct`、`wbapi acct` |
+| 管理 API | `/api/admin/*` | Web 面板、`wbapi` |
+
+账号状态约定：
+
+- `manual_disabled` 表示人工停用。
+- `disabled` 表示系统自动禁用。
+- `enable` 只清除手动停用。
+- `revive` 只清除系统禁用。
+- 两个状态都为空时，账号才回到选号池。
+
+新增管理动作时：
+
+1. 优先复用 `pool`、`scheduler` 或 `server.KeyStore` 的现有方法。
+2. 同步检查 `/api/admin/*` 和兼容 `/admin/*` 是否需要暴露。
+3. 添加无 token、成功、未知目标和失败路径测试。
+
+## 管理 API
+
+- 所有接口位于 `/api/admin/*`。
+- 鉴权 token 优先级为 `admin.token`、`keys.json` 首个 key、`api_key`。
+- 响应统一使用 JSON。
+- 错误格式为 `{"error":{"code":"...","message":"..."}}`。
+- `config` 接口必须脱敏。
+- 管理 pprof 或其他调试端点如果存在，必须沿用同一鉴权边界。
+
+面板模型对话入口为 `POST /api/admin/v1/chat/completions`。它必须继续走数据面 handler，不能旁路选号、粘性、冷却、日志和统计。
+
+## 调用密钥
+
+文件格式：
+
+```json
+{
+  "keys": [
+    {
+      "key": "sk-...",
+      "note": "备注",
+      "added": "2026-10-20"
+    }
+  ]
+}
+```
+
+实现位于 `internal/server/keystore.go`：
+
+- 路径取 `keys_file`，默认 `keys.json`。
+- 文件变化按 mtime 热加载。
+- 文件缺失或为空时回落 `api_key`。
+- 解析失败时保留上一份可用 key。
+- 写入使用临时文件加原子替换，权限为 `0600`。
+
+## 请求改写
+
+`internal/upstream` 统一处理下游请求到上游协议的转换：
+
+- 强制上游使用流式请求，非流式响应由网关本地聚合。
+- 兼容 AI-SDK、ZCode 和其他 OpenAI 兼容客户端的字段差异。
+- 归一内容块、工具定义、`tool_choice`、图片和推理字段。
+- 处理孤立 tool 消息，避免上游 11148。
+- 注入 DeepSeek thinking 和 reasoning 字段。
+- 可选清洗请求体指纹。
+
+修改这段逻辑时，必须补充表驱动测试，并覆盖标准 OpenAI 请求的零回归行为。
+
+## 持久化
+
+默认数据目录为 `./data`：
+
+| 文件 | 内容 |
+| --- | --- |
+| `state.json` | 账号池状态、冷却、积分和成本账本 |
+| `requests.json` | 最近 500 条请求日志 |
+| `metrics.json` | Token、延迟和模型统计 |
+
+这些文件均使用临时文件加原子替换。测试持久化逻辑时同时覆盖写入失败、恢复和损坏文件回退。
+
+## CLI 帮助
+
+`internal/wbapicli/help.go` 是 `wbapi` 帮助的唯一来源。
+
+新增或修改命令时：
+
+1. 更新命令帮助和子命令帮助。
+2. 支持 `wbapi help <命令>` 和 `wbapi <命令> --help`。
+3. 参数错误返回 `2`，并提示具体帮助命令。
+4. 更新 `internal/wbapicli/help_test.go`。
+5. 同步检查 [`docs/admin.md`](docs/admin.md) 的命令表。
 
 ## 发布
 
-推送版本 tag 并发布 GitHub Release 后，`.github/workflows/release.yml` 会为 Linux、macOS、
-Windows 的 `amd64` / `arm64` 构建 6 个运行包，并把压缩包与 `SHA256SUMS` 附加到 Release。
-普通 push 和 PR 只运行测试，不生成发布包。
+发布 GitHub Release 后，`.github/workflows/release.yml` 会构建：
 
-## 管理后台的构建链路
+- Linux `amd64`、`arm64`
+- macOS `amd64`、`arm64`
+- Windows `amd64`、`arm64`
 
-```
-web/src/*.vue ──vite build──▶ internal/admin/dist/ ──go:embed──▶ 二进制
-```
-
-- `internal/admin/dist` 是构建产物，**提交进版本库**：这样只改后端的人不需要 Node 就能编译。
-  **前端产物和后端代码必须一起提交**，否则二进制里是旧页面。
-- 改完前端必须重新 `pnpm build` 再 `go build`。
-- `internal/admin/webui.go` 负责静态资源与 SPA 回退：命中文件按扩展名给 Content-Type，
-  `assets/` 下（内容哈希文件名）长缓存，其余 `no-cache`，未知路径回退 `index.html` 交给前端路由。
-- 前端路由是 history 模式，base 固定 `/admin/`；Go 侧的路由前缀与 `vite.config.ts` 的 `base`
-  必须一致，换前缀要同时改。
-- 前端路由表在 `web/src/router.ts`，未登录只有 `/login` 可达，鉴权状态来自 `GET /api/admin/session`。
-
-## 两套管理入口的关系
-
-网关有两组管理端点，语义同源、客户端不同，**不要各写一套状态机**：
-
-| 入口 | 路径 | 客户端 |
-|---|---|---|
-| 上游运维端点 | `POST /admin/accounts/{uid}/{disable,enable,revive}` | `acct` / `cmd/acct` / `wbapi acct` |
-| Web 后台 API | `GET/POST /api/admin/*` | 浏览器面板（`web/`） |
-
-- 两边都走 `pool` 的同一批方法：`SetManualDisabled`（手动停用位）/ `ReviveDisabled`（系统自动禁用位）/
-  `ManualDisabledState`（读双位）/ `ClearCooldown`（清软冷却与降权，不动熔断与积分）。
-  **手动停用与系统自动禁用是两个独立状态位**：`enable` 只解手动位，
-  仍被系统禁用的号需要 `revive` 才回选号池。
-- 上游端点的模式表在 `internal/server/handler.go` 的 `adminRoutes`，经 `server.AdminRoutePatterns()`
-  暴露给 `cmd/server`：后台前端挂在 `/admin/` 前缀下，必须先把这些模式转回数据面，
-  否则会被 SPA 吃掉（`acct` 会 404）。**上游新增管理端点时同步这张表即可，不用改 main.go。**
-- 开关是同一个 `config.admin.enabled`（默认 false），且要求 `api_key` 非空（fail-fast）。
-
-## 管理 API 约定
-
-- 全部挂在 `/api/admin/*`，Bearer token 鉴权（常量时间比较）。token 取 `admin.token` →
-  `keys.json` 首个 key → `api_key`；三者都空时不鉴权。
-- 响应一律 JSON；错误形如 `{"error":{"code":"...","message":"..."}}`。
-- 只读接口：`session` / `overview` / `accounts` / `keys`(GET) / `logs` / `models` / `config`。
-- 动作接口：账号 `disable|enable|revive|clear-cooldown`、密钥 `POST` / `DELETE`、
-  `tasks/{checkin|activity|travel|keepalive|school|cat}`。
-- `tasks/*` 默认异步（202，结果写服务日志）；`tasks/checkin?wait=1` 同步等待并回传逐号回执
-  （签到是秒级短任务，公网隧道等得起，上限 80s；旅行/活跃上报按账号限速，同步会撑到分钟级，故不支持 wait）。
-- `POST /api/admin/v1/chat/completions` 是面板「模型对话」的入口，走 OpenAI 兼容面而非 REST
-  （`/api/admin/models` 返回 `{models:[...]}`，混用会让 SDK 误判）。它把请求体的 `Authorization`
-  换成 `keys.First()`、透传客户端 IP 头，再把**原始 ResponseWriter** 交给数据面 handler——SSE 直写浏览器，
-  选号 / 粘性 / 冷却 / reqlog / 统计零复制照走，没有可信旁路。请求体上限 4MB，`Chat == nil` 时 503。
-- 动作接口只调用 `pool` / `scheduler` / `server.KeyStore` 的既有入口，不直接改内部状态；
-  新增动作时优先复用这些入口，别在 admin 包里另写一套状态机。
-- 脱敏：`config` 接口不回传任何密钥明文（只给 `*_set` 布尔）；`accounts` 里 uid 全量返回给管理端
-  （运维需要区分账号），但**日志**里只打前 8 位。
-
-## 多 key 存储（internal/server/keystore.go）
-
-- 文件格式：`{"keys":[{"key","note","added"}]}`（`note` 为首选备注字段，兼容旧的 `comment`）。
-- 路径取 `config.keys_file`（默认 `keys.json`，相对工作目录）；文件不存在或为空时回落 `config.api_key`，
-  两者都空 = 不鉴权。
-- **热重载**：每次 `Valid` / `AuthRequired` / `Count` / `First` / `List` 都按 mtime 判断是否重读，
-  所以增删 key 不需要重启；解析失败保留上一份可用 key（不把自己锁在门外）。
-- `Valid` 对所有 key 做常量时间比较且不提前返回；`Add` 生成 `sk-<32 hex>` 并以 tmp+rename 原子写入（0600）；
-  `Remove` 要求前缀唯一匹配；`List` 只返回掩码 + 前缀 + 备注。
-- 面板「调用密钥」页与 `wbapi key` 都直接操作这个文件，不经过内存状态。
-
-## 上游请求体归一化（internal/upstream/zcode.go）
-
-`payload.go` 的 `PrepareBodyOptWithEffortsAndDefault` 在强制 `stream:true` 之后、指纹脱敏之前调用
-`normalizeZCodeFormat`，把 AI-SDK v5 / ZCode 形态折成标准 OpenAI：
-
-- 内容块数组（`text` / `reasoning` / `thinking` / `tool-call` / `tool-result` / `image` / `file`）
-  → 标准 messages（tool-result 拆成 `role:"tool"` + `tool_call_id`，图片转 `image_url` 部件）；
-- 字典形态的 `tools` → `{"type":"function","function":{...}}` 数组；
-- `maxOutputTokens` / `max_output_tokens` → `max_tokens`（不碰 `max_completion_tokens`）；
-- **孤儿 tool 消息降级**：没有配对 `tool_call_id` 的 `tool` 消息改成 `user`，避免上游报 11148。
-
-标准 OpenAI 请求原样通过（有测试锁定）。改这块时同步更新 `zcode_test.go` 与 `payload_test.go`。
-
-## 请求日志环形缓冲（internal/server/reqlog.go）
-
-环形窗口容量 500，供面板「请求日志」页读，并原子持久化到 `state.json` 同目录的
-`requests.json`，服务重启后恢复。`logChatRow` 在 `chatLogEnabled` 早退**之前**就写入缓冲，
-所以即使关掉 stdout 的表格日志，面板仍有记录；uid 只存前 8 位，页面账号列只展示昵称。
-
-## 请求统计持久化（internal/server/metrics.go）
-
-`/v1/stats` 的原始累加器原子写入 `state.json` 同目录的 `metrics.json`，普通重启后恢复。
-总览卡片的“清零”调用 `ResetTokenStats`，只清输入/输出、缓存 Token 和模型 Token 排行，
-保留请求数、失败数、延迟与 credit；清零结果立即落盘，重启不会恢复旧 Token。
-
-## Windows 部署
-
-本 fork 支持 Windows 计划任务与 Linux systemd：
-
-- 二进制为仓库根的 `server.exe` / `wbapi.exe`，由计划任务 `wbapi-gateway` / `wbapi-tunnel` 拉起。
-- 计划任务直接执行 Go 二进制，不再使用 `.cmd`：网关执行 `server.exe -config config.json`，
-  隧道执行 `cloudflared.exe` 及本机隧道参数。
-- `wbapi` 通过运行平台判断：服务命令走 `schtasks` / `taskkill`，探活走 `/healthz`，
-  日志读取 `gateway.log` / `gateway.err.log`，`doctor` 跳过 uid 属主检查。
+每个平台生成压缩包，Release 同时上传 `SHA256SUMS`。普通 push 和 PR 只运行测试，不生成发布包。
 
 ## 测试
 
-- 后端：`go test ./...`。新增管理接口时在 `internal/admin/admin_test.go` 里加一条 httptest 用例，
-  覆盖「无 token 401 / 动作生效 / 未知目标 404」三类断言；面板对话的代理行为在 `internal/admin/chat_test.go`。
-- 密钥读写测试在 `internal/server/keystore_test.go`（新增/掩码/前缀吊销/坏文件不覆盖/热重载）。
-- 请求日志环形缓冲的测试在 `internal/server/reqlog_test.go`（顺序、容量回绕、重启恢复、脱敏）。
-- 请求体归一化测试在 `internal/upstream/zcode_test.go`。
-- 前端：`pnpm build` 内含 `vue-tsc --noEmit` 类型检查；改完 UI 用 `pnpm dev` 或构建后进
-  `/admin/` 实际点一遍（尤其动作按钮与空/错状态）。
-
-## 提交前自检
+最低要求：
 
 ```bash
-gofmt -l $(git ls-files '*.go')   # 见下方说明：只看你改动的文件
-go vet ./...
 go test ./...
-go run ./cmd/build        # 开发构建产物统一落在 dist/
-cd web && pnpm build              # 含类型检查
+go vet ./...
 ```
 
-> 仓库里有相当一部分**历史遗留**的 gofmt 偏差文件（上游带来，40+ 个，多是结构体字段对齐）。
-> 只格式化你改动的文件，别整仓重排制造无意义的 diff。
+按风险补充测试：
+
+- 账号池和并发行为：`go test -race ./internal/pool/ ./internal/server/ ./internal/session/`
+- 管理接口：`internal/admin/*_test.go`
+- 密钥热加载和权限：`internal/server/keystore_test.go`
+- 请求日志和统计：`internal/server/reqlog_test.go`、`metrics_test.go`
+- 请求体归一化：`internal/upstream/*_test.go`
+- CLI 帮助：`internal/wbapicli/help_test.go`
+
+## 提交前检查
+
+```bash
+gofmt -l $(git ls-files '*.go')
+go vet ./...
+go test ./...
+go run ./cmd/build
+cd web && pnpm build
+```
+
+仓库仍有部分历史 gofmt 偏差文件。只格式化本次修改的 Go 文件，不要制造全仓库格式 diff。
 
 ## 文档约定
 
-| 文档 | 定位 | 长度约束 |
-|---|---|---|
-| `README.md` | 门面：是什么、怎么跑起来、文档索引 | **≤ 1500 字**（硬约束，宁短勿长） |
-| `docs/*.md` | 详细内容：能力、部署、管理面、配置、合规 | 单篇 ≤ 1000 行 |
-| `DEVELOPMENT.md` | 维护者：目录结构、构建链路、内部约定、测试 | — |
+| 文档 | 定位 |
+| --- | --- |
+| `README.md` | 项目简介、快速开始和文档导航，限制在 1500 字符内 |
+| `docs/deploy.md` | 安装、服务和源码构建 |
+| `docs/config.md` | 配置键和生效规则 |
+| `docs/admin.md` | 管理面板、密钥和 CLI |
+| `docs/features.md` | 核心能力和架构 |
+| `docs/compliance.md` | 安全边界、免责声明和许可 |
+| `DEVELOPMENT.md` | 开发、测试、内部契约和发布流程 |
 
-- README 只放「一眼看完」的信息，细节一律下沉到 `docs/`，两边靠文档索引互相链接；
-  往 README 加内容前先想清楚它是不是该进 `docs/`。
-- 改完 README 量一下：`wc -m README.md` 应 < 1500。
-- `.gitignore` 用 `*.md` 排除 Markdown，白名单放行 `README.md`、`DEVELOPMENT.md` 与 `docs/*.md`；
-  新增其它需要进版本库的文档，要加一条 `!路径.md`。
-- 本机运维笔记 `NOTES.md` 属于个人环境信息（主机名、路径、域名），保持 gitignore 状态，不进版本库。
+文档应优先使用短段落、小标题、表格和可复制命令。不要加入本机私有路径、域名、token 或运维笔记。
