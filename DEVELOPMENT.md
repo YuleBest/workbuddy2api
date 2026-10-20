@@ -2,18 +2,10 @@
 
 给仓库维护者与贡献者。部署与使用看 `README.md`。
 
-## 分支与上游
+## 分支
 
-本仓库是 [`Sliverkiss/workbuddy2api`](https://github.com/Sliverkiss/workbuddy2api) 的 fork，
-`master` 承载本 fork 的全部改动（内置管理后台、多 key、`wbapi` CLI、Windows 部署适配等）。
-上游同步用 rebase，保持本地提交线性：
-
-```bash
-git remote add upstream https://github.com/Sliverkiss/workbuddy2api.git   # 只需一次
-git fetch upstream && git rebase upstream/master
-```
-
-本 fork 的改动都是**增量**的：不改上游配置键语义、不删上游端点，所以可以直接替换上游二进制。
+`master` 是默认分支。功能改动使用独立分支开发，合并前至少通过 `go test ./...` 与
+`go vet ./...`。
 
 ## 目录结构
 
@@ -41,7 +33,6 @@ web                 Vue 3 + Vite + TS 管理面板源码
 cmd/wbapi           运维 CLI（Go）
 cmd/build           全量构建与旧命令名兼容产物生成器（Go）
 internal/tasks      growth / 开学季 / 夜猫子任务系统（Go）
-internal/aigovernance GitHub AI 治理 Action（Go）
 ```
 
 ## 环境要求

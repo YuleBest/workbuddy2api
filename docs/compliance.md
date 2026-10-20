@@ -39,8 +39,8 @@
 
 本项目采用 [MIT License](../LICENSE) 开源协议。
 
-- 原始项目：`https://github.com/Sliverkiss/workbuddy2api`；本仓库为其 fork，由 [@YuleBest](https://github.com/YuleBest) 维护
+- 原始项目：Sliverkiss/workbuddy2api（原仓库已删除）；本仓库由 [@YuleBest](https://github.com/YuleBest) 维护
 - 在遵守 MIT License 前提下，允许使用、复制、修改、合并本项目源代码
-- 再分发（源码或二进制形式）时，须保留原仓库的 MIT 版权声明与许可声明，并在 NOTICE 或 README 中注明原始出处 `https://github.com/Sliverkiss/workbuddy2api`
+- 再分发（源码或二进制形式）时，须保留原仓库的 MIT 版权声明与许可声明，并在 NOTICE 或 README 中注明原始出处 Sliverkiss/workbuddy2api
 - 本项目不授予任何上游（CodeBuddy）接口或服务的权利；使用者仍需自行遵守上游服务条款
 - 本项目的使用同时受上方**免责声明**约束；如免责声明与 MIT License 存在不一致，以免责声明为准
