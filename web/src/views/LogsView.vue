@@ -179,7 +179,7 @@ function toneOf(status: number): 'ok' | 'warn' | 'bad' | 'idle' {
             <Input
               v-model="filter"
               type="search"
-              class="pl-9"
+              class="h-8 pl-9"
               placeholder="模型名、账号或状态码"
             />
           </div>
