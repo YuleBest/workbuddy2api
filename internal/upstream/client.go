@@ -232,7 +232,7 @@ var accountFaultRule = errorRule{kind: ErrAccountFault, mode: matchFold, pattern
 //
 // 只在 400/404/413 请求级状态码上判（429+11115 概率极低且属限流语义优先，
 // 5xx 属服务端故障优先）——与 IsModelBlocked 的 400/404 口径同理。误判代价
-//（好 body 被归 prompt_too_long）：不罚号 + 不轮转 + 透传原文，客户端看到
+// （好 body 被归 prompt_too_long）：不罚号 + 不轮转 + 透传原文，客户端看到
 // 上游原文可自行排查，代价可控。
 var promptTooLongRule = errorRule{kind: ErrPromptTooLong, mode: matchFold, patterns: []string{
 	`"code":11115`,
@@ -267,7 +267,7 @@ const softRateResetPatternEN = `(?i)reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2
 // 错误风暴（429 轰炸）时尤甚。模式串均为纯常量，与 sanitize.go 的包级
 // 预编译先例保持一致。regexp 并发安全（匹配只读），无需额外锁。
 var (
-	reModelRateLimit = regexp.MustCompile(`"code"\s*:\s*"?` + modelRateLimitCode + `"?`)
+	reModelRateLimit  = regexp.MustCompile(`"code"\s*:\s*"?` + modelRateLimitCode + `"?`)
 	reSoftRateResetCN = regexp.MustCompile(softRateResetPatternCN)
 	reSoftRateResetEN = regexp.MustCompile(softRateResetPatternEN)
 )
@@ -691,12 +691,12 @@ type Client struct {
 	ClientName string
 
 	// ClientVersion WorkBuddy 客户端版本段（出站 UA 的 `WorkBuddy/<ver>` + B 段的
-	// X-IDE-Version）。空 = 内置默认 defaultClientVersion（对齐官方 5.5.4 分发包）。
+	// X-IDE-Version）。空 = 按 realm 取内置默认（CN 5.8.3 / global 5.8.4 分发包）。
 	// config upstream.client_version 覆盖。
 	ClientVersion string
 
 	// CliVersion 出站 UA 中 `CLI/<ver>` 段版本。空 = 内置默认 defaultCliVersion
-	// （对齐官方内置 CLI 2.137.1）。config upstream.cli_version 覆盖。
+	// （对齐官方内置 CLI 2.161.0）。config upstream.cli_version 覆盖。
 	CliVersion string
 
 	// PassthroughIP 是否透传客户端 IP 给上游（X-Forwarded-For/X-Real-IP 首段）。

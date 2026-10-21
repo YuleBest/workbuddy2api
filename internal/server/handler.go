@@ -653,8 +653,9 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	// 是服务端指令，走本网关的客户端不属于该形态）。此处**轮转循环外**生成一次，
 	// 循环内每次出站原样复用 → 换号/重试/降级全部同 ID，后台不再碎片化（此前网关
 	// 一个都不发，上游按 HTTP 请求逐条记账，同一对话几十上百个 RequestID）。
-	//   - conversationID：body 提取（透传客户端原值，缺省空串——不伪造，见
-	//     ResolveConversationID；官方后台不校验一致，空会话则不建立聚合键）；
+	//   - conversationID：body 提取（透传客户端原值）。缺省不在这里伪造，由
+	//     upstream.ChatHeaders 按本轮聚合键补成带横线 UUID——X-Conversation-ID
+	//     是上游渠道校验的必发项，缺失会 400 code=11-128 "conversation id missing"；
 	//   - conversationRequestID：入站 X-Conversation-Request-ID 透传优先（客户端已
 	//     有自己的对话轮 ID 则以客户端为准）。派生分两态：
 	//     * turnKey 非空（有末条 user 消息）→ 带会话键客户端走 TurnRequestID(
