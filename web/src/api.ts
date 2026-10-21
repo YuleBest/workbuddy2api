@@ -284,6 +284,13 @@ export interface Overview {
       completion_tokens: number
       total_tokens: number
     }>
+    accounts: Array<{
+      uid: string
+      nick?: string
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+    }>
   }
   sticky_sessions: number
   redis_mode: string
