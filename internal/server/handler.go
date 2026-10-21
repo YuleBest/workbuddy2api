@@ -549,6 +549,8 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// 请求级统计：出口即打一行表格日志（任何路径都会走到）。
 	st := newChatStat(time.Now(), body, peek.Stream)
+	// 模型倍率是目录展示字段：只读快照查表，缓存冷/目录未收录 → 空串（不编造）。
+	st.credits = h.modelCreditsFor(peek.Model)
 	defer st.done()
 
 	tried := map[string]bool{}
@@ -1244,6 +1246,34 @@ func (h *Handler) hintContext(bareModel string, hasImage bool) upstream.HintCont
 		}
 	}
 	return ctx
+}
+
+// modelCreditsFor 按请求模型名（可带 realm 前缀）从只读模型目录取积分倍率原文。
+// 数据源与 /v1/models、/v1/stats 的 enrichCredits 完全同源：CN cachedModelsSnapshot /
+// global GlobalModelInfosSnapshot；缓存冷或目录未收录返回空串（缺失≠免费，不编造）。
+// 不发起上游调用，只在请求入口做一次小表线性查。
+func (h *Handler) modelCreditsFor(model string) string {
+	realm, bare := resolveModel(model)
+	if bare == "" || bare == "-" {
+		return ""
+	}
+	if realm == "global" {
+		if h.cfg.Upstream == nil {
+			return ""
+		}
+		for _, mi := range h.cfg.Upstream.GlobalModelInfosSnapshot() {
+			if mi.ID == bare {
+				return mi.Credits
+			}
+		}
+		return ""
+	}
+	for _, mi := range cachedModelsSnapshot() {
+		if mi.ID == bare {
+			return mi.Credits
+		}
+	}
+	return ""
 }
 
 // cachedModelsSnapshot 只读模型目录缓存（TTL 内快照）；缓存冷/空 → nil。

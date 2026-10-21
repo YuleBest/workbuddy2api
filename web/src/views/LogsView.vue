@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ago, clock, ms, n, tokens } from '../format'
+import { ago, clock, cost, creditRate, ms, n, tokens } from '../format'
 
 const rows = ref<RequestRecord[]>([])
 const total = ref(0)
@@ -138,7 +138,7 @@ function toneOf(status: number): 'ok' | 'warn' | 'bad' | 'idle' {
         {{ rows.length ? '换个关键词，或取消「只看失败」。' : '客户端开始调用 /v1/chat/completions 后，这里会逐条出现。' }}
       </EmptyState>
 
-      <Table v-else class="min-w-[58rem]">
+      <Table v-else class="min-w-[64rem]">
         <TableHeader>
           <TableRow>
             <TableHead class="text-right">#</TableHead>
@@ -151,6 +151,8 @@ function toneOf(status: number): 'ok' | 'warn' | 'bad' | 'idle' {
             <TableHead class="text-right">耗时</TableHead>
             <TableHead class="text-right">输入</TableHead>
             <TableHead class="text-right">输出</TableHead>
+            <TableHead class="text-right">积分</TableHead>
+            <TableHead class="text-right">倍率</TableHead>
             <TableHead class="text-right">tok/s</TableHead>
           </TableRow>
         </TableHeader>
@@ -174,6 +176,12 @@ function toneOf(status: number): 'ok' | 'warn' | 'bad' | 'idle' {
             <TableCell class="num text-right text-[0.76rem]">{{ ms(r.total_ms) }}</TableCell>
             <TableCell class="num text-right text-[0.76rem]">{{ tokens(r.prompt_tokens) }}</TableCell>
             <TableCell class="num text-right text-[0.76rem]">{{ tokens(r.completion_tokens) }}</TableCell>
+            <TableCell class="num text-right text-[0.76rem]">
+              {{ r.credit == null ? '—' : cost(r.credit) }}
+            </TableCell>
+            <TableCell class="num text-right text-[0.76rem]" :title="r.credits || undefined">
+              {{ creditRate(r.credits) }}
+            </TableCell>
             <TableCell class="num text-right text-[0.76rem]">
               {{ r.tok_per_sec ? r.tok_per_sec.toFixed(1) : '—' }}
             </TableCell>
