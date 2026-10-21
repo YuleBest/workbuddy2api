@@ -238,6 +238,11 @@ func main() {
 	defer stop()
 	go sch.Run(ctx)
 
+	// 请求日志的模型倍率与 /v1/models 同源，读 handler 内的只读目录缓存。
+	// 进程重启后缓存是冷的，这里后台预热一次，避免首批请求的倍率列全是「—」；
+	// 预热失败不影响启动，后续 /v1/models 或管理端模型页仍会再次填充。
+	go h.ModelList()
+
 	// 根路由：/admin 前端 + /api/admin 管理 API + 其余交给网关数据面。
 	// 挂在根 mux 而不是塞进 server.Handler：管理后台与数据面互不感知，
 	// 关掉 admin 时数据面代码零改动（config.admin.enabled=false）。
