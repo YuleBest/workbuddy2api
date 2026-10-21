@@ -453,9 +453,12 @@ function hoursText(hours: number[]) {
               <h3 class="font-serif text-[0.95rem]">账号 Token 排行</h3>
               <span
                 class="text-[0.68rem] text-muted-foreground"
-                title="账号维度从本次升级后开始累计；历史数据只保留模型维度"
+                title="账号维度从启用该统计后开始累计；历史数据只保留模型维度"
               >按总量降序 · 前 {{ tokenAccounts.length || 8 }} 名</span>
             </div>
+            <p class="mt-1 text-[0.66rem] leading-relaxed text-muted-foreground">
+              账号维度从启用该统计后开始累计；历史 Token 仅保留模型维度。
+            </p>
 
             <div v-if="tokenAccounts.length" class="mt-4 space-y-4">
               <div v-for="(a, i) in tokenAccounts" :key="a.uid">
