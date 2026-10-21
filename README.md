@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/YuleBest/workbuddy2api/master/insta
 
 其他平台可以从 [GitHub Releases](https://github.com/YuleBest/workbuddy2api/releases/latest) 下载对应压缩包或从源码构建，完整步骤见[部署文档](docs/deploy.md)。
 
-此外，本项目还能通过 Magisk 模块在 Android 上运行，见 [YuleBest/workbuddy2api-magisk](https://YuleBest/workbuddy2api-magisk)。
+此外，本项目还能通过 Magisk 模块在 Android 上运行，见 [YuleBest/workbuddy2api-magisk](https://github.com/YuleBest/workbuddy2api-magisk)。
 
 ## 文档
 
