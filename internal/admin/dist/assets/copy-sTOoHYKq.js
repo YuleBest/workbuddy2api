@@ -1,4 +1,4 @@
-import{c}from"./index-DiNfR73o.js";/**
+import{c}from"./index-BUVdxSZT.js";/**
  * @license @lucide/vue v1.59.0 - ISC
  *
  * This source code is licensed under the ISC license.

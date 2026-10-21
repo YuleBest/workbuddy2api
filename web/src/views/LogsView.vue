@@ -211,14 +211,14 @@ function toneOf(status: number): 'ok' | 'warn' | 'bad' | 'idle' {
         {{ rows.length ? '换个模型、账号或状态条件。' : '客户端开始调用 /v1/chat/completions 后，这里会逐条出现。' }}
       </EmptyState>
 
-      <Table v-else class="min-w-[57rem] table-fixed [&_td]:px-2 [&_th]:px-2">
+      <Table v-else class="min-w-[58rem] table-fixed [&_td]:px-2 [&_th]:px-2">
         <TableHeader>
           <TableRow>
             <TableHead class="w-12 text-right">#</TableHead>
             <TableHead class="w-20">时间</TableHead>
-            <TableHead class="w-40">模型</TableHead>
+            <TableHead class="w-48">模型</TableHead>
             <TableHead class="w-14">方式</TableHead>
-            <TableHead class="w-24">账号</TableHead>
+            <TableHead class="w-20">账号</TableHead>
             <TableHead class="w-16 text-right">状态</TableHead>
             <TableHead class="w-14 text-right">首字</TableHead>
             <TableHead class="w-14 text-right">耗时</TableHead>
