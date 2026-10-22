@@ -185,7 +185,7 @@ function tokenState(a: Account) {
 
           <CreditBar :value="a.credits" :max="maxCredits" />
 
-          <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div class="flex flex-wrap items-center gap-2.5 sm:justify-end">
             <Button
               v-if="!a.manual_disabled"
               variant="outline"

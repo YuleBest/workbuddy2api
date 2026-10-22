@@ -220,7 +220,7 @@ function quit() {
             <SelectTrigger class="w-[7.5rem]" aria-label="自动刷新间隔">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper">
               <SelectItem v-for="o in refreshOptions" :key="o.value" :value="String(o.value)">
                 {{ o.label }}
               </SelectItem>

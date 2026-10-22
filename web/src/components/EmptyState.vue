@@ -15,7 +15,7 @@ defineProps<{ icon?: Component; title: string }>()
     </div>
     <div class="min-w-0">
       <p class="font-serif text-[0.98rem] leading-snug">{{ title }}</p>
-      <div v-if="$slots.default" class="mt-1 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">
+      <div v-if="$slots.default" class="mt-1 max-w-[65ch] text-xs leading-relaxed text-muted-foreground text-pretty">
         <slot />
       </div>
     </div>

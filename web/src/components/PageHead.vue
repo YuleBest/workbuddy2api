@@ -17,7 +17,7 @@ defineProps<{ title: string; lede?: string }>()
           {{ lede }}
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
+      <div class="flex flex-wrap items-center gap-2.5 sm:ml-auto">
         <slot name="actions" />
       </div>
     </div>

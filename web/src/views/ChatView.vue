@@ -257,7 +257,7 @@ void load()
         :class="messages.length === 0 ? 'justify-center' : ''"
         class="flex max-h-[58vh] min-h-[22rem] flex-col gap-5 overflow-y-auto px-5 py-5 sm:px-6"
       >
-        <EmptyState v-if="messages.length === 0" :icon="MessageSquare" title="还没有对话">
+        <EmptyState v-if="messages.length === 0" :icon="MessageSquare" title="还没有对话" class="self-center">
           <template v-if="!modelsLoaded">
             正在拉取模型清单（冷缓存时网关要现去上游拉，稍等几秒）…
           </template>

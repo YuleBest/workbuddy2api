@@ -96,7 +96,7 @@ async function copy() {
     <Alert v-if="created" class="mb-5 border-l-status-ok">
       <CircleCheck class="size-4" />
       <AlertTitle>新 key 已生成，只显示这一次</AlertTitle>
-      <div class="col-start-2 mt-2 flex flex-wrap items-center gap-2">
+      <div class="col-start-2 mt-2 flex flex-wrap items-center gap-2.5">
         <code class="mono rounded border border-border bg-muted px-2.5 py-1.5 text-[0.75rem]">{{ created }}</code>
         <Button variant="outline" size="sm" @click="copy">
           <Copy class="size-3.5" />

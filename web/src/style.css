@@ -230,6 +230,20 @@
     font-family: var(--app-font-serif);
     font-weight: 500;
     letter-spacing: -0.012em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* 图标与正文同重：Lucide 默认 2px 在 14–16px 字号旁偏粗，统一收到 1.5px。 */
+  .lucide {
+    stroke-width: 1.5;
   }
 
   code,
@@ -330,35 +344,38 @@ body::before {
 
 /* 状态灯 */
 .lamp {
+  position: relative;
   display: inline-block;
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 999px;
-  background: var(--status-idle);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-idle) 16%, transparent);
+  color: var(--status-idle);
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .lamp.ok {
-  background: var(--status-ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-ok) 18%, transparent);
+  color: var(--status-ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 
 .lamp.warn {
-  background: var(--status-warn);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-warn) 18%, transparent);
+  color: var(--status-warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 
 .lamp.bad {
-  background: var(--status-bad);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-bad) 18%, transparent);
+  color: var(--status-bad);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 
+/* 呼吸灯只动 transform / opacity，避免每帧重绘 box-shadow。 */
 .lamp.live::after {
-  display: block;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   border-radius: inherit;
+  background: currentColor;
   content: '';
   animation: lamp-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
@@ -429,13 +446,22 @@ body::before {
 }
 
 .skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--muted);
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
-    var(--muted) 25%,
-    color-mix(in srgb, var(--foreground) 8%, var(--muted)) 37%,
-    var(--muted) 63%
+    transparent 0%,
+    color-mix(in srgb, var(--foreground) 8%, transparent) 50%,
+    transparent 100%
   );
-  background-size: 400% 100%;
+  content: '';
+  transform: translateX(-100%);
   animation: shimmer 1.5s ease infinite;
 }
 
@@ -566,6 +592,12 @@ body::before {
 .chat-markdown img {
   max-width: 100%;
   border-radius: var(--radius);
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+[data-theme='dark'] .chat-markdown img {
+  outline-color: oklch(1 0 0 / 0.1);
 }
 
 .caret {
@@ -577,13 +609,13 @@ body::before {
 
 @keyframes lamp-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
+    opacity: 0.35;
+    transform: scale(1);
   }
-  70% {
-    box-shadow: 0 0 0 7px transparent;
-  }
+  70%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
+    opacity: 0;
+    transform: scale(2.6);
   }
 }
 
@@ -600,10 +632,10 @@ body::before {
 
 @keyframes shimmer {
   from {
-    background-position: 100% 50%;
+    transform: translateX(-100%);
   }
   to {
-    background-position: 0 50%;
+    transform: translateX(100%);
   }
 }
 

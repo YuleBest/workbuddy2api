@@ -51,6 +51,11 @@ function quit() {
 function toastTone(kind: 'ok' | 'warn' | 'bad') {
   return kind === 'bad' ? 'bg-status-bad' : kind === 'warn' ? 'bg-status-warn' : 'bg-status-ok'
 }
+
+/** 主题图标交叉淡入：两个图标都留在 DOM 里，只切 opacity / scale / blur。 */
+function iconSwap(active: boolean) {
+  return active ? 'scale-100 opacity-100 blur-[0px]' : 'scale-[0.25] opacity-0 blur-[4px]'
+}
 </script>
 
 <template>
@@ -97,7 +102,7 @@ function toastTone(kind: 'ok' | 'warn' | 'bad') {
             v-for="item in nav"
             :key="item.to"
             :to="item.to"
-            class="nav-link relative flex shrink-0 items-center gap-2.5 rounded-md border-b-2 border-transparent px-3 py-2 text-[0.8rem] text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground lg:border-b-0 lg:border-l-2 lg:gap-3"
+            class="nav-link relative flex shrink-0 items-center gap-2.5 rounded-md border-b-2 border-transparent px-3 py-2.5 text-[0.8rem] text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground lg:border-b-0 lg:border-l-2 lg:gap-3"
           >
             <component :is="item.icon" class="size-4 opacity-65" aria-hidden="true" />
             <span class="whitespace-nowrap">{{ item.label }}</span>
@@ -124,7 +129,7 @@ function toastTone(kind: 'ok' | 'warn' | 'bad') {
         <header
           class="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md"
         >
-          <div class="flex h-14 items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
+          <div class="flex h-14 items-center gap-2.5 px-4 sm:gap-3 sm:px-6 lg:px-8">
             <div class="flex min-w-0 items-baseline gap-2">
               <span
                 class="mono hidden text-[0.6rem] tracking-[0.14em] text-muted-foreground sm:inline"
@@ -146,7 +151,7 @@ function toastTone(kind: 'ok' | 'warn' | 'bad') {
               <SelectTrigger size="sm" class="w-[5.1rem] text-xs" aria-label="自动刷新间隔">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent position="popper" align="end">
                 <SelectItem v-for="o in refreshOptions" :key="o.value" :value="String(o.value)">
                   {{ o.label }}
                 </SelectItem>
@@ -161,8 +166,16 @@ function toastTone(kind: 'ok' | 'warn' | 'bad') {
                   :aria-label="state.theme === 'light' ? '切换到深色' : '切换到浅色'"
                   @click="setTheme(state.theme === 'light' ? 'dark' : 'light')"
                 >
-                  <Sun v-if="state.theme === 'light'" class="size-4" />
-                  <Moon v-else class="size-4" />
+                  <span class="grid size-4 place-items-center" aria-hidden="true">
+                    <Sun
+                      class="col-start-1 row-start-1 size-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]"
+                      :class="iconSwap(state.theme === 'light')"
+                    />
+                    <Moon
+                      class="col-start-1 row-start-1 size-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]"
+                      :class="iconSwap(state.theme === 'dark')"
+                    />
+                  </span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -237,16 +250,25 @@ function toastTone(kind: 'ok' | 'warn' | 'bad') {
   }
 }
 
-.toast-enter-active,
-.toast-leave-active {
+.toast-enter-active {
   transition:
-    opacity 180ms ease,
-    transform 180ms ease;
+    opacity 220ms cubic-bezier(0.2, 0, 0, 1),
+    transform 220ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.toast-enter-from,
+.toast-leave-active {
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateY(4px);
 }
 </style>

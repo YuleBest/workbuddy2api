@@ -38,7 +38,7 @@ const props = withDefaults(
           {{ note }}
         </CardDescription>
       </div>
-      <div v-if="$slots.actions" class="ml-auto flex flex-wrap items-center gap-2">
+      <div v-if="$slots.actions" class="ml-auto flex flex-wrap items-center gap-2.5">
         <slot name="actions" />
       </div>
     </CardHeader>

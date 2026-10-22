@@ -273,7 +273,7 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
             <TableHead class="w-[38%]">
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 text-[0.72rem] font-medium transition-colors hover:text-foreground"
+                class="sort-head"
                 title="按模型名排序"
                 @click="toggleSort('name')"
               >
@@ -287,7 +287,7 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
             <TableHead class="text-right">
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 text-[0.72rem] font-medium transition-colors hover:text-foreground"
+                class="sort-head justify-end"
                 title="按积分倍率排序（缺倍率的排最后）"
                 @click="toggleSort('rate')"
               >
@@ -301,7 +301,7 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
             <TableHead class="text-right">
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 text-[0.72rem] font-medium transition-colors hover:text-foreground"
+                class="sort-head justify-end"
                 title="按上下文长度排序"
                 @click="toggleSort('context')"
               >
@@ -314,7 +314,7 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
             <TableHead class="text-right">
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 text-[0.72rem] font-medium transition-colors hover:text-foreground"
+                class="sort-head justify-end"
                 title="按单次最大输出排序（缺值的排最后）"
                 @click="toggleSort('maxout')"
               >
@@ -347,24 +347,24 @@ function extraFields(m: ModelRow): { k: string; v: string }[] {
               {{ m.max_output_tokens ? n(m.max_output_tokens) : '—' }}
             </TableCell>
             <TableCell class="text-right">
-              <div class="flex items-center justify-end gap-1">
+              <div class="flex items-center justify-end gap-2.5">
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   :title="`复制 ID：${m.id}`"
                   :aria-label="`复制 ID：${m.id}`"
                   @click="copyID(m.id)"
                 >
-                  <Copy class="size-3.5" />
+                  <Copy class="size-4" />
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   title="更多信息"
                   aria-label="更多信息"
                   @click="detail = m"
                 >
-                  <Ellipsis class="size-3.5" />
+                  <Ellipsis class="size-4" />
                 </Button>
               </div>
             </TableCell>
@@ -467,3 +467,21 @@ model:   {{ sorted[0]?.id || 'cn:deepseek-v4-flash' }}</pre>
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+/* 排序按钮铺满表头单元格：整格可点，指针不必瞄准 12px 的字。 */
+.sort-head {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.375rem;
+  padding-block: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  transition: color 150ms ease;
+}
+
+.sort-head:hover {
+  color: var(--foreground);
+}
+</style>
