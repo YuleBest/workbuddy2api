@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/YuleBest/workbuddy2api/master/insta
 安装器会完成以下操作：
 
 1. 检测 Linux `amd64` 或 `arm64`。
-2. 下载 `v1.0.1` Release 压缩包和 `SHA256SUMS`。
+2. 下载 `v1.1.0` Release 压缩包和 `SHA256SUMS`。
 3. 校验 SHA-256。
 4. 安装到 `~/.local/share/wb2api`。
 5. 创建 `wb2api`、`wbapi` 和 `wb2api-login` 命令入口。
@@ -43,7 +43,7 @@ bash install.sh
 
 | 变量 | 作用 |
 | --- | --- |
-| `WB2API_VERSION` | 安装指定版本，默认 `v1.0.1` |
+| `WB2API_VERSION` | 安装指定版本，默认 `v1.1.0` |
 | `WB2API_HOME` | 修改运行目录 |
 | `WB2API_BIN_DIR` | 修改命令链接目录，默认 `~/.local/bin` |
 

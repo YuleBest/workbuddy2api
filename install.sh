@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 REPO="${WB2API_REPO:-YuleBest/workbuddy2api}"
-VERSION="${WB2API_VERSION:-v1.0.1}"
+VERSION="${WB2API_VERSION:-v1.1.0}"
 RELEASE_BASE_URL="${WB2API_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"
 DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 BIN_HOME="${WB2API_BIN_DIR:-${HOME}/.local/bin}"
